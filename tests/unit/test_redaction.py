@@ -6,9 +6,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from rhythm.core.redaction import REDACTED, mask_identifier, redact, redact_text
+from tests.fakes import FAKE_JWT
 
 # Synthetic, obviously fake values only.
-FAKE_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlLXVzZXIifQ.ZmFrZXNpZ25hdHVyZQ"
 
 
 def test_sensitive_keys_redacted_recursively() -> None:

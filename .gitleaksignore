@@ -1,0 +1,4 @@
+# Synthetic JWT test fixtures in the initial commit (decode to {"sub": "fake-user"}); not credentials.
+a0176b5f9ee954de03a1fd35cc82ea44c3984f84:tests/integration/test_audit_log.py:jwt:20
+a0176b5f9ee954de03a1fd35cc82ea44c3984f84:tests/unit/test_logging.py:jwt:10
+a0176b5f9ee954de03a1fd35cc82ea44c3984f84:tests/unit/test_redaction.py:jwt:11

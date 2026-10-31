@@ -14,10 +14,9 @@ from rhythm.core.clock import FixedClock
 from rhythm.core.errors import AuditIntegrityError
 from rhythm.db.models import AuditEvent
 from rhythm.db.session import session_scope
+from tests.fakes import FAKE_JWT
 
 pytestmark = pytest.mark.integration
-
-FAKE_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlLXVzZXIifQ.ZmFrZXNpZ25hdHVyZQ"
 
 
 def _append(sf: sessionmaker[Session], log: AuditLog, n: int = 1, **kw: object) -> None:

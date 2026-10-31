@@ -6,8 +6,7 @@ import logging
 import pytest
 
 from rhythm.core.logging import configure_logging, get_logger
-
-FAKE_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlLXVzZXIifQ.ZmFrZXNpZ25hdHVyZQ"
+from tests.fakes import FAKE_JWT
 
 
 def _lines(out: str) -> list[dict[str, object]]:
