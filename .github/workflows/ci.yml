@@ -59,9 +59,33 @@ jobs:
       - name: Dependency audit
         run: pip-audit --skip-editable
 
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Types (tsc --noEmit)
+        run: npm run typecheck
+      - name: Unit tests (vitest)
+        run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
   docker:
     runs-on: ubuntu-latest
-    needs: [test, secrets-scan]
+    needs: [test, web, secrets-scan]
     permissions:
       contents: read
       packages: write   # publish to GitHub Container Registry with the built-in token
@@ -89,3 +113,43 @@ jobs:
           docker push "$IMAGE:sha-$SHORT_SHA"
           docker push "$IMAGE:main"
           echo "Published $IMAGE:sha-$SHORT_SHA and $IMAGE:main" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish to Docker Hub (main branch only; skipped until DOCKERHUB_TOKEN secret exists)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DOCKERHUB_USERNAME: rhythmconsultancy
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "DOCKERHUB_TOKEN secret not set; skipping Docker Hub publish." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          IMAGE="docker.io/${DOCKERHUB_USERNAME}/rhythm-ai-trader"
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker tag rhythm-ai-trader:ci "$IMAGE:sha-$SHORT_SHA"
+          docker tag rhythm-ai-trader:ci "$IMAGE:main"
+          docker push "$IMAGE:sha-$SHORT_SHA"
+          docker push "$IMAGE:main"
+
+  docker-web:
+    runs-on: ubuntu-latest
+    needs: [web, secrets-scan]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dashboard image
+        run: docker build -t rhythm-web:ci --build-arg RHYTHM_API_URL=http://api:8000 web
+      - name: Publish dashboard to GitHub Container Registry (main branch only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')-web"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker tag rhythm-web:ci "$IMAGE:sha-$SHORT_SHA"
+          docker tag rhythm-web:ci "$IMAGE:main"
+          docker push "$IMAGE:sha-$SHORT_SHA"
+          docker push "$IMAGE:main"
