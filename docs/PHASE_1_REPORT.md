@@ -37,10 +37,12 @@ The 1 warning is a third-party deprecation notice (Starlette TestClient's use of
 
 **Smoke test** (real server process + Alembic CLI against Postgres): `alembic upgrade head` → `0001_foundation (head)`; `/health/live` 200; `/health/ready` 200 with all four checks ok; `/v1/system/mode` → `RESEARCH_ONLY`, `live_trading_available: false`; `system.started` audit event present; `/v1/audit/verify` ok. `RHYTHM_TRADING_MODE=LIVE rhythm-api` → exit code 1, "LIVE trading mode is not available". With the database stopped, `/health/live` stayed 200 and `/health/ready` returned 503 (fail closed); this also exposed DB-backed endpoints returning 500, fixed to 503 + test.
 
-## Not verified in this environment
+## Verification after push (2026-10-31)
 
-- **Docker image build / `docker compose up`:** the sandbox's network policy blocks Docker Hub (`registry-1.docker.io` → 403), so base images could not be pulled. The Dockerfile and compose file are untested here; the CI `docker` job and a local `make up` will be the first real runs.
-- **GitHub Actions workflow:** not executed (no repository remote yet).
+- **GitHub Actions** (https://github.com/babyjose-droid/RhythmAITradeBot/actions): run for `ede5cdb` and later all green — secrets-scan (gitleaks), ruff, mypy, import contracts, pytest on Postgres 16 service, pip-audit, Docker build, LIVE-refusal check. The first run (`a0176b5`) failed only gitleaks, on synthetic JWT test fixtures; fixed by generating them at runtime and a `.gitleaksignore` for the historical commit.
+- **Image publishing:** `d5147ee` onwards publishes `ghcr.io/babyjose-droid/rhythmaitradebot:main` and `:sha-<commit>`; pulled successfully on the owner's Mac.
+- **Docker Compose on the owner's Mac:** first attempt failed because host port 5432 was already in use; compose now publishes the DB on `127.0.0.1:${DB_HOST_PORT:-55432}`. Re-run: db healthy → migrate exited 0 → api started; `/health/ready` → `ready` (all 4 checks ok, skew 0.001 s, migrations `0001_foundation`); `/v1/system/mode` → `RESEARCH_ONLY`, `live_trading_available: false`.
+- The cloud sandbox cannot reach Docker Hub (403), so container builds are verified in CI and on the Mac only.
 
 ## Design decisions
 
