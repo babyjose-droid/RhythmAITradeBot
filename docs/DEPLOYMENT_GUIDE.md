@@ -1,10 +1,23 @@
 # Deployment Guide
 
-**Status:** Local stack defined in Phase 1 (image build not yet verified — see PHASE_1_REPORT.md); hosted deployment in Phase 9.
+**Status:** Local stack defined in Phase 1; image build verified in GitHub Actions. Hosted deployment in Phase 9.
 
 ## Local (Phase 1 target)
 
 `docker compose up --build` → `db` (Postgres 16, healthchecked) → `migrate` (`alembic upgrade head`, runs once) → `api` (non-root container, healthcheck on `/health/live`, published on `127.0.0.1:8000`). Later: `web` (Next.js). Configuration via `.env` copied from `.env.example` (placeholders only). Default `TRADING_MODE=RESEARCH_ONLY`.
+
+## Container images (automatic)
+
+Every push to `main` that passes all CI checks publishes the API image to GitHub Container Registry using the workflow's built-in token (no stored credentials):
+
+- `ghcr.io/babyjose-droid/rhythmaitradebot:main` — latest passing `main`
+- `ghcr.io/babyjose-droid/rhythmaitradebot:sha-<7-char-commit>` — immutable, per commit
+
+Pull and run (with a PostgreSQL URL of your own):
+```bash
+docker pull ghcr.io/babyjose-droid/rhythmaitradebot:main
+```
+New packages on GHCR are private by default; change visibility under the package's *Package settings* if needed. For AWS (Phase 9) the same image will be mirrored to ECR.
 
 ## Hosted (later)
 

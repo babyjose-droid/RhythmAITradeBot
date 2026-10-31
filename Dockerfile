@@ -10,6 +10,8 @@ RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install .
 
 FROM python:3.12-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/babyjose-droid/RhythmAITradeBot" \
+      org.opencontainers.image.description="Rhythm AI Trader API (research/paper only; live trading disabled)"
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
