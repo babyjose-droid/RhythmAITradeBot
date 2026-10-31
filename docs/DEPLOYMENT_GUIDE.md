@@ -4,7 +4,7 @@
 
 ## Local (Phase 1 target)
 
-`docker compose up --build` → `db` (Postgres 16, healthchecked) → `migrate` (`alembic upgrade head`, runs once) → `api` (non-root container, healthcheck on `/health/live`, published on `127.0.0.1:8000`). Later: `web` (Next.js). Configuration via `.env` copied from `.env.example` (placeholders only). Default `TRADING_MODE=RESEARCH_ONLY`.
+`docker compose up --build` → `db` (Postgres 16, healthchecked) → `migrate` (`alembic upgrade head`, runs once) → `api` (non-root container, healthcheck on `/health/live`, published on `127.0.0.1:8000`). Then `web` (Next.js dashboard, non-root, published on `127.0.0.1:3000`, proxies `/api/*` to the `api` service). Configuration via `.env` copied from `.env.example` (placeholders only). Default `TRADING_MODE=RESEARCH_ONLY`.
 
 ## Container images (automatic)
 
@@ -12,6 +12,9 @@ Every push to `main` that passes all CI checks publishes the API image to GitHub
 
 - `ghcr.io/babyjose-droid/rhythmaitradebot:main` — latest passing `main`
 - `ghcr.io/babyjose-droid/rhythmaitradebot:sha-<7-char-commit>` — immutable, per commit
+- `ghcr.io/babyjose-droid/rhythmaitradebot-web:main` and `:sha-<commit>` — dashboard image (Phase 3)
+
+Optional Docker Hub mirror (`rhythmconsultancy/rhythm-ai-trader`): the CI step runs only if the repository secret `DOCKERHUB_TOKEN` exists (owner adds it in GitHub → Settings → Secrets; never in code).
 
 Pull and run (with a PostgreSQL URL of your own):
 ```bash

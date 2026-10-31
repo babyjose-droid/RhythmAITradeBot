@@ -1,0 +1,35 @@
+import { describe, expect, it } from "vitest";
+
+import { decisionBadge, freshnessTone, orderBadge } from "./status";
+
+describe("visual grammar", () => {
+  it("keeps candidate, approved, at-broker and fill visually distinct", () => {
+    const specs = [
+      decisionBadge("BUY_CANDIDATE"),
+      orderBadge("APPROVED_NOT_SENT"),
+      orderBadge("AT_BROKER_NOT_FILLED"),
+      orderBadge("FILLED"),
+    ];
+    expect(new Set(specs.map((s) => s.kind)).size).toBe(4);
+    expect(new Set(specs.map((s) => s.label)).size).toBe(4);
+  });
+
+  it("labels candidates as ideas, never as orders", () => {
+    const b = decisionBadge("BUY_CANDIDATE");
+    expect(b.label).toBe("IDEA — BUY");
+    expect(b.title).toContain("Not an order");
+    expect(decisionBadge("REJECTED_BY_RISK").kind).toBe("rejected");
+  });
+
+  it("treats unknown order states as needing attention", () => {
+    expect(orderBadge("SOMETHING_NEW").kind).toBe("attention");
+  });
+
+  it("fails closed on freshness", () => {
+    expect(freshnessTone("FRESH")).toBe("ok");
+    expect(freshnessTone("SESSION_CLOSED")).toBe("closed");
+    for (const s of ["STALE", "MISSING", "INVALID", "ERROR", "weird"]) {
+      expect(freshnessTone(s)).toBe("stale");
+    }
+  });
+});

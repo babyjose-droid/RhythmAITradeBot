@@ -51,6 +51,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_seed.add_argument("--horizon", default="INTRADAY", choices=list(wl_svc.WATCHLIST_HORIZONS))
     p_seed.add_argument("--count", type=int, default=5)
 
+    p_bt = sub.add_parser("backtest-run", help="backtest the intraday baseline on MOCK 5m bars")
+    p_bt.add_argument("--symbols", default="NSE:MOCKA,NSE:MOCKB,NSE:MOCKC")
+    p_bt.add_argument("--days", type=int, default=30)
+    p_bt.add_argument("--capital", default="1000000")
+
+    p_acct = sub.add_parser("paper-account-create", help="create a PAPER account")
+    p_acct.add_argument("--name", required=True)
+    p_acct.add_argument("--cash", default="1000000")
+
     args = parser.parse_args(argv)
     try:
         return _run(args)
@@ -107,6 +116,46 @@ def _run(args: argparse.Namespace) -> int:
                 "rejected": up.rejected,
             }
         )
+        return 0
+
+    if args.cmd == "backtest-run":
+        from decimal import Decimal  # noqa: PLC0415
+
+        from rhythm.backtest.engine import BacktestConfig, run_backtest  # noqa: PLC0415
+        from rhythm.backtest.store import FULL, save_run  # noqa: PLC0415
+        from rhythm.strategies.intraday_orb import IntradayOrbVwap  # noqa: PLC0415
+
+        keys = tuple(InstrumentKey.parse(x) for x in args.symbols.split(","))
+        cal = SessionCalendar()
+        provider = MockMarketDataProvider(clock=clock, calendar=cal)
+        end = clock.now()
+        start = end - timedelta(days=args.days)
+        bt_bars = {k: list(provider.bars(k, Interval.M5, start, end)) for k in keys}
+        strat = IntradayOrbVwap()
+        cfg = BacktestConfig(
+            symbols=keys, start=start, end=end, initial_capital=Decimal(args.capital)
+        )
+        bt = run_backtest(strat, cfg, bt_bars, calendar=cal)
+        with session_scope(factory) as s:
+            run = save_run(
+                s, strategy=strat, cfg=cfg, results={FULL: bt}, audit=audit, actor_id=actor
+            )
+            run_id = run.id
+        _print({"source": "MOCK", "run_id": run_id, "run_hash": bt.run_hash, **bt.metrics})
+        return 0
+
+    if args.cmd == "paper-account-create":
+        from decimal import Decimal  # noqa: PLC0415
+
+        from rhythm.paper.service import create_account  # noqa: PLC0415
+
+        with session_scope(factory) as s:
+            acct = create_account(
+                s, audit, name=args.name, starting_cash=Decimal(args.cash), actor_id=actor
+            )
+            _print(
+                {"account_kind": "PAPER", "id": acct.id, "name": acct.name, "cash": str(acct.cash)}
+            )
         return 0
 
     # watchlist-seed-mock

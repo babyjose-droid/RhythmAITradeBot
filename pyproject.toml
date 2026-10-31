@@ -50,7 +50,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "DTZ", "PL", "N"]
-ignore = ["PLR0913", "PLR2004", "PLR0917"]  # FastAPI handlers take DI params positionally
+ignore = ["PLR0913", "PLR2004", "PLR0917", "PLR0911", "PLR0912", "PLR0915"]  # FastAPI handlers take DI params positionally
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "PLR2004", "S608"]
@@ -109,3 +109,27 @@ name = "Domain modules do not depend on the API layer"
 type = "forbidden"
 source_modules = ["rhythm.instruments", "rhythm.marketdata"]
 forbidden_modules = ["rhythm.api"]
+
+[[tool.importlinter.contracts]]
+name = "Strategies are pure: no I/O, broker, orders or persistence"
+type = "forbidden"
+source_modules = ["rhythm.strategies"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.broker", "rhythm.execution", "rhythm.paper", "rhythm.audit", "rhythm.backtest"]
+
+[[tool.importlinter.contracts]]
+name = "Risk gate and execution core have no broker, API or DB access"
+type = "forbidden"
+source_modules = ["rhythm.risk", "rhythm.execution", "rhythm.orders"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.broker", "rhythm.paper"]
+
+[[tool.importlinter.contracts]]
+name = "Backtests never reach a broker or the paper service"
+type = "forbidden"
+source_modules = ["rhythm.backtest"]
+forbidden_modules = ["rhythm.api", "rhythm.broker", "rhythm.paper"]
+
+[[tool.mypy.overrides]]
+# Tests mutate objects between assertions (mypy narrows enum attributes) and use small
+# untyped helpers; strictness is kept for src/.
+module = ["tests.*"]
+disable_error_code = ["comparison-overlap", "no-untyped-call", "no-untyped-def", "unused-ignore"]

@@ -2,7 +2,7 @@
 
 AI-assisted research, portfolio decision-support and paper-trading platform for Indian cash equities (initial broker: Sharekhan). Claude is advisory only; deterministic strategy rules, portfolio accounting and an independent risk engine decide whether a candidate may become an order. **Live trading is disabled by default and is not implemented.** Nothing in this project promises returns.
 
-**Current phase: 2 — Data and watchlists (complete, awaiting review before Phase 3).** Exact test results: `docs/PHASE_1_REPORT.md`, `docs/PHASE_2_REPORT.md`.
+**Current phase: 3 — Intraday strategy, backtester, paper trading, first dashboard (complete, awaiting review before Phase 4).** Exact test results: `docs/PHASE_1_REPORT.md`, `docs/PHASE_2_REPORT.md`, `docs/PHASE_3_REPORT.md`.
 
 ## Quick start (local)
 
@@ -29,7 +29,16 @@ RHYTHM_MARKET_DATA_PROVIDER=mock RHYTHM_BROKER_ADAPTER=mock .venv/bin/rhythm-api
 curl "http://127.0.0.1:8000/v1/marketdata/freshness?watchlist_id=1"
 ```
 
-Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; no order endpoints exist; API listens on loopback only (no dashboard auth until Phase 8).
+Phase 3 — backtest and PAPER trading on MOCK data (local only):
+
+```bash
+.venv/bin/rhythm-cli backtest-run --symbols NSE:MOCKA,NSE:MOCKB --days 30   # stores a run; results are pipeline checks only
+.venv/bin/rhythm-cli paper-account-create --name demo --cash 1000000
+RHYTHM_TRADING_MODE=PAPER RHYTHM_FEATURES__PAPER_TRADING=true RHYTHM_MARKET_DATA_PROVIDER=mock RHYTHM_BROKER_ADAPTER=mock .venv/bin/rhythm-api
+cd web && npm ci && npm run build && npm start      # dashboard on http://127.0.0.1:3000 (or: docker compose up web)
+```
+
+Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the only orders are simulated PAPER orders (DB-enforced `account_kind='PAPER'`); no broker order method exists; API and dashboard listen on loopback only (no auth until Phase 8).
 
 ## Phase 0 findings (2026-10-31)
 
@@ -46,7 +55,7 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; no 
 | 0 ✅ | Inspect, verify broker API, plan | Docs in `docs/`; blockers & decisions listed; **owner approval** |
 | 1 ✅ | Foundation: repo layout, settings & feature flags (mode default RESEARCH_ONLY, LIVE refused), Postgres + Alembic, structured redacted logging, audit log, `/health`, CI (ruff, mypy, pytest, gitleaks), Docker Compose, `.env.example` | `docker compose up` works; migrations up/down; tests run green **and results reported verbatim**; LIVE start-up refusal tested |
 | 2 ✅ | Instruments/watchlists, scrip-master snapshots, MarketDataProvider + mock, freshness monitor, data-quality events, Sharekhan adapter **read-only** behind interface (mocks; supervised read-only verification only with approval) | Stale-data detection tests; provenance on every datum; MOCK labelled |
-| 3 | Intraday baseline strategy, event-driven backtester with cost model, paper order lifecycle & fill simulator, first dashboard screens | Deterministic backtests; look-ahead canaries; paper state-machine tests; PAPER banners |
+| 3 ✅ | Intraday baseline strategy, event-driven backtester with cost model, paper order lifecycle & fill simulator, first dashboard screens | Deterministic backtests; look-ahead canaries; paper state-machine tests; PAPER banners |
 | 4 | Risk engine (all checks), ledgers + consolidated view, kill switch/pauses, idempotency, reconciliation | Every risk rule unit-tested; fail-closed tests; duplicate/UNKNOWN scenarios |
 | 5 | Swing strategy, overnight/event gate, thesis invalidation, paper workflow | Backtests + paper tests |
 | 6 | Long-term fundamentals evidence model, thesis/valuation tracking, allocation, review schedule | Requires licensed data (D-03) or runs MOCK-labelled |
@@ -57,4 +66,4 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; no 
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

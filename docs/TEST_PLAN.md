@@ -1,6 +1,26 @@
 # Test Plan
 
-**Status:** Phase 2 — 153 tests (unit + integration on real PostgreSQL), all passing on 2026-10-31; exact output in PHASE_1_REPORT.md and PHASE_2_REPORT.md.
+**Status:** Phase 3: 193 Python tests (unit, plus integration on real PostgreSQL) and 4 web tests, all passing on 2026-10-31. Exact output is in the PHASE_1/2/3 reports.
+
+## Phase 3 coverage
+
+- **Strategy:** breakout, VWAP filter, volume filter, wide-stop rejection, time exit, one entry per day.
+- **Look-ahead guards:** future bars, foreign bars, unordered bars. Backtester **prefix invariance** and **future-tampering** tests.
+- **Order state machine:** every illegal transition raises; display categories are checked.
+- **Cost model:** components per side and product.
+- **Fill model:** slippage clamped to the bar, limit marketability, stop gap, participation cap and partial fills.
+- **Paper book:** idempotent propose, OCO, same-bar priority, short refusal, expiry and force-close.
+- **Risk gate:** accept, reduce and block paths, stale-data block, exits always allowed.
+- **Backtests:** deterministic run hash, split overlap rejection, metrics.
+- **API integration:**
+  - full lifecycle candidate → order → fill;
+  - PAPER-only DB constraint and append-only triggers;
+  - cancel;
+  - research mode creates no orders;
+  - catch-up bars cannot open positions;
+  - backtest API.
+- **Migration 0003:** up and down.
+- **Web (vitest):** badge mapping, decision labels, freshness fails closed. A Playwright smoke test of the dashboard was run manually against the real API (see PHASE_3_REPORT.md).
 
 ## Phase 2 coverage
 

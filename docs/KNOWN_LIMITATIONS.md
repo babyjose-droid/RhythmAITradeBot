@@ -20,6 +20,11 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 3:** the cost model is **illustrative and unverified** (placeholder brokerage rates, and statutory rates not checked against a current contract note). Every backtest and paper result carries `verified=false`.
+- **Phase 3:** the risk gate is the interim `baseline-0.1`; the full risk engine, kill switch and reconciliation arrive in Phase 4.
+- **Phase 3:** long-only intraday; no short selling. Fill simulation has no queue position, latency or exchange rejections. The bar-based fill model cannot see moves inside a bar.
+- **Phase 3:** backtest and paper results so far use MOCK random-walk data. They validate the pipeline, not the strategy.
+- **Phase 3:** the dashboard has no authentication (loopback only). Its API address (`RHYTHM_API_URL`) is fixed when the image is built.
 - **Phase 2:** no exchange holiday list is bundled; until one is loaded from the exchange's published calendar, holidays count as trading days (freshness then reports STALE — safe). Special/muhurat sessions are not modelled.
 - **Phase 2:** which Sharekhan `instType` codes denote cash equity is unverified (docs say "EQ, FS, FI"; the sample row shows "SM"); the parser requires an explicit allow-list (default `EQ`).
 - **Phase 2:** the only working data sources are MOCK. Real instruments and prices need Sharekhan read-only verification (approval required) and/or a licensed vendor (B-06).

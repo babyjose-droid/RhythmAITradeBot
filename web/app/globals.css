@@ -1,0 +1,70 @@
+:root {
+  --bg: #f7f7f5;
+  --fg: #1d1d1f;
+  --muted: #6b6b70;
+  --card: #ffffff;
+  --line: #e2e2e0;
+  --paper: #6b3fa0;
+  --research: #2f5d8a;
+  --ok: #1d7a46;
+  --warn: #b26b00;
+  --bad: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416;
+    --fg: #ececee;
+    --muted: #a0a0a8;
+    --card: #1e1e22;
+    --line: #34343a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
+h1 { font-size: 22px; margin: 20px 0 12px; }
+h2 { font-size: 16px; margin: 0 0 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.nav { display: flex; gap: 24px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+.nav nav { display: flex; gap: 16px; flex-wrap: wrap; }
+.nav a { color: var(--fg); text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+.brand { font-weight: 700; }
+.banner { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 16px; color: #fff; background: #555; font-size: 13px; }
+.banner-paper { background: var(--paper); }
+.banner-research { background: var(--research); }
+.banner-down { background: var(--bad); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin: 12px 0; overflow-x: auto; }
+.paper-frame { border: 2px dashed var(--paper); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+button, select, input { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+button { cursor: pointer; }
+button.primary { background: var(--paper); color: #fff; border-color: var(--paper); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.error { background: #fde8e7; color: var(--bad); border: 1px solid var(--bad); border-radius: 6px; padding: 8px 12px; margin: 10px 0; }
+.note { background: #eef5ee; color: var(--ok); border: 1px solid var(--ok); border-radius: 6px; padding: 8px 12px; margin: 10px 0; }
+.foot { text-align: center; color: var(--muted); font-size: 12px; padding: 24px 16px; }
+
+/* Visual grammar: label + colour + border style all differ (accessible without colour). */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge-candidate { border: 1px dashed var(--muted); color: var(--muted); background: transparent; }
+.badge-rejected { border: 1px dashed var(--bad); color: var(--bad); background: transparent; text-decoration: line-through; }
+.badge-approved { border: 1px solid #2f6fbf; color: #2f6fbf; background: #e8f0fb; }
+.badge-at_broker { border: 2px solid var(--warn); color: #7a4a00; background: #fff3dc; }
+.badge-partial { border: 2px solid var(--ok); color: var(--ok); background: repeating-linear-gradient(45deg, #e5f4ea, #e5f4ea 4px, #fff 4px, #fff 8px); }
+.badge-filled { border: 2px solid var(--ok); color: #fff; background: var(--ok); }
+.badge-closed { border: 1px solid var(--line); color: var(--muted); background: #f0f0f0; }
+.badge-attention { border: 2px solid var(--bad); color: #fff; background: var(--bad); }
+.row-fill td { border-left: 0; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill-ok { background: #e5f4ea; color: var(--ok); }
+.pill-closed { background: #eceff3; color: #44505e; }
+.pill-stale { background: #fde8e7; color: var(--bad); }
+.tag-paper, .tag-mock, .tag-warn { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.tag-paper { background: var(--paper); color: #fff; }
+.tag-mock { background: #ffe9a8; color: #6b4b00; border: 1px solid #d4a400; }
+.tag-warn { background: #fde8e7; color: var(--bad); }

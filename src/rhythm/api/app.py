@@ -15,7 +15,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 
 from rhythm import __version__
-from rhythm.api.routes import instruments, marketdata, system, watchlists
+from rhythm.api.routes import instruments, marketdata, system, trading, watchlists
 from rhythm.api.state import AppState
 from rhythm.audit import ActorType, AuditLog
 from rhythm.broker.base import BrokerReadAdapter
@@ -169,4 +169,5 @@ def create_app(
     app.include_router(instruments.router)
     app.include_router(watchlists.router)
     app.include_router(marketdata.router)
+    app.include_router(trading.router)
     return app

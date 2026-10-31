@@ -1,6 +1,6 @@
 # Internal API Specification (initial)
 
-**Status:** Phases 1–2 implemented (health, mode, audit, instruments, watchlists, market data, data quality — see PHASE_2_REPORT.md for the exact list); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
+**Status:** Phases 1–3 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals — exact lists in PHASE_2_REPORT.md and PHASE_3_REPORT.md; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
 
 | Method | Path | Phase | Notes |
 |---|---|---|---|
@@ -9,9 +9,12 @@
 | GET/POST | `/v1/instruments`, `/v1/watchlists` | 2 | |
 | GET | `/v1/marketdata/{instrument}/bars?interval=&start=&end=` | 2 | each bar with provenance |
 | GET | `/v1/marketdata/freshness` | 2 | per-feed staleness |
-| POST | `/v1/backtests` · GET `/v1/backtests/{id}` | 3 | |
-| GET | `/v1/paper/orders`, `/v1/paper/fills`, `/v1/paper/positions` | 3 | PAPER-only routes |
-| GET | `/v1/decisions?horizon=` | 3 | candidates — never orders |
+| GET | `/v1/strategies` | 3 ✅ | name, version, params, params hash |
+| POST/GET | `/v1/backtests` · GET `/v1/backtests/{id}` | 3 ✅ | `data_source` db\|provider, named non-overlapping splits; result has run/data hash, cost model, metrics per split, trade list |
+| POST/GET | `/v1/paper/accounts` · GET `/{id}`, `/{id}/orders`, `/{id}/fills` · POST `/{id}/cycle` | 3 ✅ | PAPER-only; responses carry `x-account-kind: PAPER`; cycle requires mode PAPER + `features.paper_trading` |
+| GET | `/v1/paper/orders/{id}/events` · POST `/v1/paper/orders/{id}/cancel` | 3 ✅ | append-only event history |
+| POST | `/v1/research/cycle` | 3 ✅ | evaluates strategy, records candidates, creates **no** orders |
+| GET | `/v1/signals` | 3 ✅ | candidates (`kind: CANDIDATE`) — never orders; linked `order_id` if one was created |
 | GET/PUT | `/v1/risk/policies` | 4 | PUT requires owner + reason; creates new version |
 | POST | `/v1/risk/kill-switch` (activate/release) | 4 | audited |
 | POST | `/v1/strategies/{id}/pause` / `resume` | 4 | |

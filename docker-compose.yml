@@ -46,5 +46,18 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  web:
+    build:
+      context: ./web
+      args:
+        # Next.js bakes rewrites in at build time; the API is reached on the compose network.
+        RHYTHM_API_URL: http://api:8000
+    # Published on 127.0.0.1 only (no dashboard authentication until Phase 8).
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   db-data:
