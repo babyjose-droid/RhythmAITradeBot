@@ -1,0 +1,47 @@
+# Local development stack. Copy .env.example to .env first (placeholders only).
+# Ports are published on 127.0.0.1 only: there is no dashboard authentication until Phase 8.
+name: rhythm
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rhythm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rhythm}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: &app-env
+      RHYTHM_ENVIRONMENT: ${RHYTHM_ENVIRONMENT:-local}
+      RHYTHM_TRADING_MODE: ${RHYTHM_TRADING_MODE:-RESEARCH_ONLY}
+      RHYTHM_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rhythm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rhythm}
+      RHYTHM_LOG_LEVEL: ${RHYTHM_LOG_LEVEL:-INFO}
+      RHYTHM_LOG_JSON: ${RHYTHM_LOG_JSON:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    environment: *app-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  db-data:

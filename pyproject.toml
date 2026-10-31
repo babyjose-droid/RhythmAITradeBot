@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rhythm-ai-trader"
+version = "0.1.0"
+description = "Multi-horizon Indian-equities research and paper-trading platform (live trading disabled)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "sqlalchemy>=2.0.36,<3",
+  "alembic>=1.14,<2",
+  "psycopg[binary]>=3.2,<4",
+  "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=6",
+  "httpx>=0.27",
+  "hypothesis>=6.100",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "import-linter>=2.1",
+  "pip-audit>=2.7",
+]
+
+[project.scripts]
+rhythm-api = "rhythm.api.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rhythm = ["py.typed", "db/migrations/script.py.mako"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "DTZ", "PL", "N"]
+ignore = ["PLR0913", "PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "S608"]
+"src/rhythm/db/migrations/**" = ["N999", "S608"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "integration: requires a PostgreSQL database (TEST_DATABASE_URL)",
+]
+filterwarnings = ["error::DeprecationWarning:rhythm.*"]
+
+[tool.coverage.run]
+source = ["rhythm"]
+branch = true
+omit = ["src/rhythm/db/migrations/*", "src/rhythm/api/server.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+# ---------------------------------------------------------------- import-linter
+[tool.importlinter]
+root_package = "rhythm"
+
+[[tool.importlinter.contracts]]
+name = "Core has no dependency on application layers"
+type = "forbidden"
+source_modules = ["rhythm.core"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.audit"]
+
+[[tool.importlinter.contracts]]
+name = "Config does not depend on API or DB"
+type = "forbidden"
+source_modules = ["rhythm.config"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.audit"]
