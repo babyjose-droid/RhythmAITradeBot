@@ -1,6 +1,10 @@
 # Test Plan
 
-**Status:** Phase 1 — 76 tests (unit + integration on real PostgreSQL), all passing on 2026-10-31; exact output in PHASE_1_REPORT.md. Results are recorded per phase.
+**Status:** Phase 2 — 153 tests (unit + integration on real PostgreSQL), all passing on 2026-10-31; exact output in PHASE_1_REPORT.md and PHASE_2_REPORT.md.
+
+## Phase 2 coverage
+
+Instrument keys, tick rounding, session calendar boundaries/weekends/holidays; snapshot diff (add/change/delist, empty, duplicates, bad ticks, wrong exchange, mass-removal guard, hash order-independence); point-in-time registry, idempotent re-apply, out-of-order/same-day conflict rejection with persisted records and quality events; MOCK refusal in staging/production (settings, registry, bars, CLI); bar/quote validation; freshness per horizon incl. after-close and weekend; mock providers' determinism and every failure mode; read-only broker protocol has no order methods; Sharekhan envelope status mapping and documented scrip-master shape; watchlist API with audit-chain verification; freshness transitions recorded once with recovery; provenance of stored bars; CLI workflow.
 
 ## Phase 1 coverage
 

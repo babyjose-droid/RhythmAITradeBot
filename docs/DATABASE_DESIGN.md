@@ -1,6 +1,6 @@
 # Database Design (initial)
 
-**Status:** Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1. All tables: `id` (UUIDv7 or bigint identity), `created_at`, `updated_at` (`timestamptz`, UTC). Money/price columns `numeric(18,4)`; quantities `bigint`. Provenance columns where data originates externally: `source`, `source_ts`, `received_ts`, `source_ref`.
+**Status:** Implemented so far — 0001: `audit_events`, `system_health_events`; 0002: `instrument_snapshots`, `instruments` (point-in-time; partial unique index on active rows), `watchlists`, `watchlist_items` (keyed by exchange+symbol), `market_bars` (OHLC/volume check constraints, unique per source), `data_quality_events`. The rest is the Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1. All tables: `id` (UUIDv7 or bigint identity), `created_at`, `updated_at` (`timestamptz`, UTC). Money/price columns `numeric(18,4)`; quantities `bigint`. Provenance columns where data originates externally: `source`, `source_ts`, `received_ts`, `source_ref`.
 
 ## 1. Entity groups
 

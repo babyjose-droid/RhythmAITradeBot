@@ -97,3 +97,19 @@ def test_database_password_not_in_repr() -> None:
 def test_clock_skew_bounds(skew: float) -> None:
     with pytest.raises(ValidationError):
         make_settings(max_clock_skew_seconds=skew)
+
+
+@pytest.mark.parametrize("field", ["market_data_provider", "broker_adapter"])
+def test_mock_sources_refused_outside_local(field: str) -> None:
+    with pytest.raises(ValidationError, match="mock data sources"):
+        make_settings(
+            environment="production",
+            database_url="postgresql+psycopg://rhythm:Xq9-long@db/rhythm",
+            **{field: "mock"},
+        )
+    assert getattr(make_settings(**{field: "mock"}), field) == "mock"
+
+
+def test_data_sources_default_to_none() -> None:
+    s = make_settings()
+    assert (s.market_data_provider, s.broker_adapter) == ("none", "none")

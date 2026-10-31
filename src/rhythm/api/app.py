@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -14,13 +15,20 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 
 from rhythm import __version__
-from rhythm.api.routes import system
+from rhythm.api.routes import instruments, marketdata, system, watchlists
 from rhythm.api.state import AppState
 from rhythm.audit import ActorType, AuditLog
+from rhythm.broker.base import BrokerReadAdapter
+from rhythm.broker.mock import MockBrokerAdapter
 from rhythm.config import Settings, get_settings
+from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import Clock, SystemClock
 from rhythm.core.logging import configure_logging, get_logger
 from rhythm.db.session import create_db_engine, create_session_factory, session_scope
+from rhythm.marketdata.freshness import FreshnessPolicy
+from rhythm.marketdata.mock import MockMarketDataProvider
+from rhythm.marketdata.monitor import FreshnessMonitor
+from rhythm.marketdata.provider import MarketDataProvider
 
 log = get_logger(__name__)
 
@@ -38,10 +46,26 @@ def _audit_lifecycle(state: AppState, event_type: str) -> None:
                     "version": __version__,
                     "trading_mode": state.settings.trading_mode.value,
                     "features": state.settings.features.model_dump(),
+                    "market_data_provider": state.settings.market_data_provider,
+                    "broker_adapter": state.settings.broker_adapter,
                 },
             )
     except Exception:
         log.exception("lifecycle_audit_failed", event_type=event_type)
+
+
+def build_market_data(
+    settings: Settings, clock: Clock, calendar: SessionCalendar
+) -> MarketDataProvider | None:
+    if settings.market_data_provider == "mock":
+        return MockMarketDataProvider(clock=clock, calendar=calendar)
+    return None
+
+
+def build_broker(settings: Settings, clock: Clock) -> BrokerReadAdapter | None:
+    if settings.broker_adapter == "mock":
+        return MockBrokerAdapter(clock=clock)
+    return None
 
 
 def create_app(
@@ -49,6 +73,9 @@ def create_app(
     *,
     engine: Engine | None = None,
     clock: Clock | None = None,
+    market_data: MarketDataProvider | None = None,
+    broker: BrokerReadAdapter | None = None,
+    calendar: SessionCalendar | None = None,
     configure_logs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()  # raises on unsafe config (e.g. LIVE)
@@ -56,12 +83,26 @@ def create_app(
         configure_logging(settings.log_level, json=settings.log_json)
     engine = engine or create_db_engine(settings.database_url.get_secret_value())
     clock = clock or SystemClock()
+    calendar = calendar or SessionCalendar()
+    market_data = market_data or build_market_data(settings, clock, calendar)
+    broker = broker or build_broker(settings, clock)
     state = AppState(
         settings=settings,
         engine=engine,
         session_factory=create_session_factory(engine),
         clock=clock,
         audit=AuditLog(environment=settings.environment.value, clock=clock),
+        calendar=calendar,
+        market_data=market_data,
+        broker=broker,
+        freshness=FreshnessMonitor(
+            provider=market_data,
+            calendar=calendar,
+            clock=clock,
+            policy=FreshnessPolicy(
+                intraday_max_age=timedelta(seconds=settings.freshness_intraday_max_age_seconds)
+            ),
+        ),
     )
 
     @asynccontextmanager
@@ -125,4 +166,7 @@ def create_app(
         )
 
     app.include_router(system.router)
+    app.include_router(instruments.router)
+    app.include_router(watchlists.router)
+    app.include_router(marketdata.router)
     return app

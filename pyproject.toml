@@ -34,6 +34,7 @@ dev = [
 
 [project.scripts]
 rhythm-api = "rhythm.api.server:main"
+rhythm-cli = "rhythm.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -49,7 +50,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "DTZ", "PL", "N"]
-ignore = ["PLR0913", "PLR2004"]
+ignore = ["PLR0913", "PLR2004", "PLR0917"]  # FastAPI handlers take DI params positionally
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "PLR2004", "S608"]
@@ -96,3 +97,15 @@ name = "Config does not depend on API or DB"
 type = "forbidden"
 source_modules = ["rhythm.config"]
 forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.audit"]
+
+[[tool.importlinter.contracts]]
+name = "Broker adapters do not touch the database, API or audit log"
+type = "forbidden"
+source_modules = ["rhythm.broker"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.audit"]
+
+[[tool.importlinter.contracts]]
+name = "Domain modules do not depend on the API layer"
+type = "forbidden"
+source_modules = ["rhythm.instruments", "rhythm.marketdata"]
+forbidden_modules = ["rhythm.api"]

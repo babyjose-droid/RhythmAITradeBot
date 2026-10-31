@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     log_json: bool = True
     max_clock_skew_seconds: float = Field(default=2.0, gt=0, le=60)
     features: FeatureFlags = FeatureFlags()
+    # Phase 2: data sources. "none" means no source configured -> data reported MISSING.
+    market_data_provider: Literal["none", "mock"] = "none"
+    broker_adapter: Literal["none", "mock"] = "none"
+    freshness_intraday_max_age_seconds: float = Field(default=10.0, gt=0, le=300)
+    # Identity recorded in audit events for local, unauthenticated use (auth arrives in Phase 8).
+    local_actor_id: str = Field(default="local-owner", min_length=1, max_length=100)
 
     @field_validator("log_level")
     @classmethod
@@ -91,6 +97,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "placeholder database credentials are not allowed outside local/test"
                 )
+            if "mock" in (self.market_data_provider, self.broker_adapter):
+                raise ValueError("mock data sources are not allowed outside local/test")
         if self.features.paper_trading and self.trading_mode is not TradingMode.PAPER:
             raise ValueError("paper_trading feature requires trading_mode=PAPER")
         return self

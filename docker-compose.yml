@@ -29,6 +29,8 @@ services:
       RHYTHM_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rhythm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rhythm}
       RHYTHM_LOG_LEVEL: ${RHYTHM_LOG_LEVEL:-INFO}
       RHYTHM_LOG_JSON: ${RHYTHM_LOG_JSON:-true}
+      RHYTHM_MARKET_DATA_PROVIDER: ${RHYTHM_MARKET_DATA_PROVIDER:-none}
+      RHYTHM_BROKER_ADAPTER: ${RHYTHM_BROKER_ADAPTER:-none}
     depends_on:
       db:
         condition: service_healthy

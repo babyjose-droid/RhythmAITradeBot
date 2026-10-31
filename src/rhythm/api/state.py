@@ -9,11 +9,15 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from rhythm.audit import AuditLog
+from rhythm.broker.base import BrokerReadAdapter
 from rhythm.config import Settings
+from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import Clock
 from rhythm.core.logging import get_logger
 from rhythm.db.models import SystemHealthEvent
 from rhythm.db.session import session_scope
+from rhythm.marketdata.monitor import FreshnessMonitor
+from rhythm.marketdata.provider import MarketDataProvider
 
 log = get_logger(__name__)
 
@@ -25,6 +29,10 @@ class AppState:
     session_factory: sessionmaker[Session]
     clock: Clock
     audit: AuditLog
+    calendar: SessionCalendar
+    market_data: MarketDataProvider | None
+    broker: BrokerReadAdapter | None
+    freshness: FreshnessMonitor
     _last_ready: bool | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

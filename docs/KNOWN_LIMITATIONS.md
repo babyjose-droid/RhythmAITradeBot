@@ -16,9 +16,14 @@
 | B-08 | Endpoint discrepancies D1–D8 between docs and SDK | Order-trade and history adapters | Observed responses (read-only) + Sharekhan |
 | B-09 | No sandbox/UAT environment documented | All broker integration testing is mock-only; any real call is production | Accept; read-only supervised checks only |
 | B-10 | No client order ID / idempotency field | Duplicate-safety for live | Internal idempotency + reconciliation (designed) |
-| B-11 | No local repository connected; work currently lives in the cloud session | Persistence/versioning of code | Owner connects a folder or provides a git remote (D-01) |
+| B-11 | ~~No repository~~ **Resolved 2026-10-31:** code in `~/Projects/rhythm-ai-trader` and github.com/babyjose-droid/RhythmAITradeBot | — | — |
 
 ## 2. Known limitations (by design or data)
+
+- **Phase 2:** no exchange holiday list is bundled; until one is loaded from the exchange's published calendar, holidays count as trading days (freshness then reports STALE — safe). Special/muhurat sessions are not modelled.
+- **Phase 2:** which Sharekhan `instType` codes denote cash equity is unverified (docs say "EQ, FS, FI"; the sample row shows "SM"); the parser requires an explicit allow-list (default `EQ`).
+- **Phase 2:** the only working data sources are MOCK. Real instruments and prices need Sharekhan read-only verification (approval required) and/or a licensed vendor (B-06).
+- **Phase 2:** the API has no authentication; it binds to loopback only. Watchlist edits are audited as `local-owner`.
 
 - Historical candles are **not corporate-action adjusted** (FAQ); adjustments need a corporate-actions source.
 - Access token lasts 24 h with no documented refresh: **daily manual login** is required; unattended overnight operation will drop to RESEARCH_ONLY when the token expires.

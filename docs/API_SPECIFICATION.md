@@ -1,6 +1,6 @@
 # Internal API Specification (initial)
 
-**Status:** Phase 0 sketch. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
+**Status:** Phases 1–2 implemented (health, mode, audit, instruments, watchlists, market data, data quality — see PHASE_2_REPORT.md for the exact list); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
 
 | Method | Path | Phase | Notes |
 |---|---|---|---|
