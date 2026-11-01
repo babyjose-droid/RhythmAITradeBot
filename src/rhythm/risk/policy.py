@@ -15,7 +15,7 @@ from typing import Any
 from rhythm.core.errors import RhythmError
 from rhythm.core.market import Horizon
 
-DEFAULT_VERSION = "paper-default-1"
+DEFAULT_VERSION = "paper-default-2"
 
 
 class PolicyValidationError(RhythmError):
@@ -41,6 +41,8 @@ _INT_BOUNDS: dict[str, tuple[int, int]] = {
     "max_open_orders_per_strategy": (1, 100),
     "max_orders_per_minute": (1, 120),
     "reconciliation_max_age_seconds": (5, 3600),
+    "event_blackout_days": (0, 30),
+    "event_calendar_max_age_days": (1, 30),
 }
 
 
@@ -61,6 +63,8 @@ class RiskPolicy:
     entry_window_start: time = time(9, 20)  # R17, exchange-local
     entry_window_end: time = time(14, 45)  # R17
     allowed_instrument_types: tuple[str, ...] = ("EQ",)  # R5
+    event_blackout_days: int = 3  # R18: no new swing entry this close to a known event
+    event_calendar_max_age_days: int = 7  # R18: calendar must have been synced recently
     review_above_order_value: Decimal | None = None  # REQUIRES_REVIEW above this value
     ledger_allocation_pct: dict[str, Decimal] = field(
         default_factory=lambda: {

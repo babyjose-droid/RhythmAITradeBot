@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Protocol
@@ -56,6 +56,8 @@ class Signal:
     stop: Decimal | None = None
     target: Decimal | None = None
     reasons: tuple[str, ...] = ()
+    # Multi-day strategies state *why* they enter and what would prove them wrong.
+    thesis: Mapping[str, Any] | None = None
 
     @property
     def decision(self) -> DecisionState:
@@ -75,6 +77,20 @@ class PositionView:
 
 
 @dataclass(frozen=True)
+class EventView:
+    """A corporate event as known at decision time (``known_at <= now``)."""
+
+    kind: str
+    event_date: date
+    known_at: datetime
+
+
+def default_bar_end(b: Bar) -> datetime:
+    dur = b.interval.duration
+    return b.start + dur if dur is not None else b.start
+
+
+@dataclass(frozen=True)
 class StrategyContext:
     """Point-in-time view handed to a strategy. Construction fails on any future data."""
 
@@ -83,14 +99,19 @@ class StrategyContext:
     bars: tuple[Bar, ...]  # completed bars only, oldest first
     position: PositionView | None = None
     entries_today: int = 0
+    events: tuple[EventView, ...] = ()
+    # Daily bars end at the session close, not 24 h after the open: the runner supplies it.
+    bar_end: Callable[[Bar], datetime] = default_bar_end
 
     def __post_init__(self) -> None:
         now = ensure_utc(self.now)
         object.__setattr__(self, "now", now)
+        for e in self.events:
+            if ensure_utc(e.known_at) > now:
+                raise LookAheadError(f"event {e.kind} {e.event_date} was not known at {now}")
         prev: datetime | None = None
         for b in self.bars:
-            dur = b.interval.duration
-            end = b.start + dur if dur is not None else b.start
+            end = self.bar_end(b)
             if end > now:
                 raise LookAheadError(f"bar {b.start.isoformat()} ends after decision time")
             if b.key != self.key:

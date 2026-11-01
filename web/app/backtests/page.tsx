@@ -23,6 +23,7 @@ export default function Backtests() {
   const runs = useData(() => api.get<BacktestRun[]>("/v1/backtests"));
   const [symbols, setSymbols] = useState("NSE:MOCKA,NSE:MOCKB,NSE:MOCKC");
   const [days, setDays] = useState(30);
+  const [strategy, setStrategy] = useState("intraday_orb_vwap");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -37,6 +38,7 @@ export default function Backtests() {
         start: start.toISOString(),
         end: end.toISOString(),
         data_source: "provider",
+        strategy,
       });
       await runs.refresh();
     } catch (e) {
@@ -60,7 +62,20 @@ export default function Backtests() {
           Symbols <input value={symbols} onChange={(e) => setSymbols(e.target.value)} size={40} />
         </label>
         <label>
-          Days <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} />
+          Strategy{" "}
+          <select
+            value={strategy}
+            onChange={(e) => {
+              setStrategy(e.target.value);
+              setDays(e.target.value === "swing_trend_pullback" ? 365 : 30);
+            }}
+          >
+            <option value="intraday_orb_vwap">intraday_orb_vwap (5-minute)</option>
+            <option value="swing_trend_pullback">swing_trend_pullback (daily)</option>
+          </select>
+        </label>
+        <label>
+          Days <input type="number" min={1} max={730} value={days} onChange={(e) => setDays(Number(e.target.value))} />
         </label>
         <button className="primary" disabled={busy} onClick={run}>
           {busy ? "Running…" : "Run backtest (provider data)"}

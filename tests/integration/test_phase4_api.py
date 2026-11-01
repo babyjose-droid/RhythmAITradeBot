@@ -122,7 +122,7 @@ def test_policy_versioning(env4: Env) -> None:
     c = env4.c
     wid, aid = _setup(env4)
     before = c.get("/v1/risk/policies").json()
-    assert before["active"]["version"] == "paper-default-1" and before["history"] == []
+    assert before["active"]["version"] == "paper-default-2" and before["history"] == []
     bad = c.post(
         "/v1/risk/policies",
         json={"params": {"intraday_risk_per_trade_pct": "0.9"}, "reason": "too big"},
@@ -189,8 +189,18 @@ def test_daily_loss_stop_auto_pauses_the_strategy(env4: Env) -> None:
         acct = s.get(PaperAccount, aid)
         assert acct is not None
         day = SIGNAL_AT.astimezone(EXCHANGE_TZ).date().isoformat()
-        # Pretend the day started 10 % higher: the strategy is far past its 1.5 % stop.
-        acct.state = {"day": day, "last_bar": {}, "entries": {}, "day_start_equity": "1100000"}
+        # Earlier cycles today: the intraday ledger held positions worth 100k at the start of
+        # the day and they are gone with no cash back -> a 100k ledger loss, past the 1.5 % stop.
+        # (Phase 3/4 flat state format: the cycle must still read it as the INTRADAY ledger.)
+        acct.state = {
+            "day": day,
+            "last_bar": {},
+            "entries": {},
+            "pnl_day": day,
+            "day_flow": "0",
+            "day_start_value": "100000",
+            "day_start_equity": "1000000",
+        }
     r = _cycle(env4, aid, wid).json()
     assert r["new_orders"] == 0 and r["auto_paused"] == [STRAT]
     paused = c.get("/v1/risk/controls").json()["paused_strategies"][STRAT]

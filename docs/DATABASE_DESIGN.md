@@ -10,6 +10,12 @@
 - `risk_checks`, `control_events` and `reconciliations` (all append-only triggers);
 - `idempotency_records` (primary key: key + endpoint).
 
+0005 adds:
+- `corporate_events` (with `known_at` for point-in-time use; unique per instrument/kind/date/source);
+- `event_syncs` (coverage proof);
+- `theses` (PAPER only);
+- `thesis_events` (append-only).
+
 The rest is the Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1. All tables: `id` (UUIDv7 or bigint identity), `created_at`, `updated_at` (`timestamptz`, UTC). Money/price columns `numeric(18,4)`; quantities `bigint`. Provenance columns where data originates externally: `source`, `source_ts`, `received_ts`, `source_ref`.
 
 ## 1. Entity groups

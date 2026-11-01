@@ -24,7 +24,7 @@ from rhythm.paper import service as paper
 from rhythm.portfolio import service as portfolio
 from rhythm.risk.engine import ENGINE_VERSION
 from rhythm.risk.policy import PolicyValidationError
-from rhythm.strategies.intraday_orb import STRATEGIES
+from rhythm.strategies.registry import STRATEGIES
 
 router = APIRouter(tags=["risk"])
 PAPER_HEADERS = {"x-account-kind": "PAPER"}

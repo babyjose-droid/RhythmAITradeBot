@@ -2,6 +2,12 @@
 
 **Status:** Implemented in Phase 3 for the intraday baseline (`src/rhythm/backtest/`). Items below marked *(planned)* are not built yet.
 
+**Swing (Phase 5).**
+- **Bars and runner:** daily bars through `SwingRunner`. A bar's decision time is its session close, and fills happen at the next open.
+- **Events:** taken point-in-time via `known_at`. Instruments with no event source get no swing entries (R18 fails closed).
+- **Run identity:** the run hash includes an events digest.
+- **Warm-up:** the first 51 sessions of any run or split are warm-up only (SMA50).
+
 **As built (Phase 3):** bars replay chronologically through `IntradayRunner` — the same code paper trading uses. `StrategyContext` refuses future or foreign bars. Orders fill at the next bar's open with 5 bps adverse slippage, clamped to the bar's high–low range and capped at 10 % of bar volume. A stop that gaps fills at the open. Within a bar the order is stop > exit > entry > target. Costs come from the versioned cost model (`illustrative-unverified-2026-10`, **unverified**). Reproducibility: `data_hash` (bars) + `run_hash` (strategy, version, params hash, cost model, fill and risk settings, data hash). Results are stored in `backtest_runs` and `backtest_trades`. Metrics: total return, max drawdown, volatility, Sharpe (rf = 0, labelled), trades, win rate, expectancy, profit factor, average R, charges, turnover, exposure, equal-weight buy-and-hold benchmark, exit reasons. Each is reported for the full period and for each named split. Runs on MOCK data are labelled `data_is_mock`. Not yet built: survivorship flag (no point-in-time universe source), corporate-action adjustment, circuit limits, walk-forward automation.
 
 Design (Phase 0):

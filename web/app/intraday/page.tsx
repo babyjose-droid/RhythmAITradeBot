@@ -35,7 +35,7 @@ export default function IntradayWorkspace() {
     [acctId],
   );
   const orders = useData(
-    () => (acctId == null ? Promise.resolve([]) : api.get<Order[]>(`/v1/paper/accounts/${acctId}/orders?limit=50`)),
+    () => (acctId == null ? Promise.resolve([]) : api.get<Order[]>(`/v1/paper/accounts/${acctId}/orders?horizon=INTRADAY&limit=50`)),
     [acctId],
   );
   const fills = useData(
@@ -43,7 +43,11 @@ export default function IntradayWorkspace() {
     [acctId],
   );
   const signals = useData(
-    () => api.get<SignalRow[]>(acctId == null ? "/v1/signals?limit=50" : `/v1/signals?account_id=${acctId}&limit=50`),
+    () => api.get<SignalRow[]>(
+        acctId == null
+          ? "/v1/signals?horizon=INTRADAY&limit=50"
+          : `/v1/signals?horizon=INTRADAY&account_id=${acctId}&limit=50`,
+      ),
     [acctId],
   );
 
@@ -271,7 +275,7 @@ export default function IntradayWorkspace() {
             </tr>
           </thead>
           <tbody>
-            {detail.data?.positions.map((p) => (
+            {detail.data?.positions.filter((p) => p.horizon === "INTRADAY").map((p) => (
               <tr key={p.instrument}>
                 <td>{p.instrument}</td>
                 <td>{p.quantity}</td>

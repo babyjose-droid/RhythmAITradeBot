@@ -26,7 +26,7 @@ from rhythm.core.market import Horizon, InstrumentKey
 from rhythm.execution.costs import CostModel, Product, Side
 from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
 
-ENGINE_VERSION = "risk-engine-1.0"
+ENGINE_VERSION = "risk-engine-1.1"
 ORDER_MODES = frozenset({"PAPER", "BACKTEST", "SIMULATION"})  # LIVE is never accepted
 
 
@@ -106,6 +106,13 @@ class RiskState:
     orders_last_minute: int
     duplicate_idempotency_key: bool
     unknown_orders_on_instrument: int
+    # Wall-clock time of the evaluation (R3). Swing decisions refer to the last close, which
+    # may be hours before the cycle runs; reconciliation age is measured against *now*.
+    evaluated_at: datetime | None = None
+    # R18 inputs: when this instrument's event calendar was last synced, and calendar days
+    # from the decision date to the next event known at decision time (None: none known).
+    event_calendar_synced_at: datetime | None = None
+    days_to_next_event: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -231,7 +238,8 @@ def r3_reconciled(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResul
     if not s.reconciliation_ok:
         return _r("R3", CheckStatus.FAIL, "last reconciliation found a break")
     # |age|: the cycle reconciles at wall-clock time, just after the bar the decision used.
-    age = (s.as_of - s.reconciled_at).total_seconds()
+    ref = s.evaluated_at or s.as_of
+    age = (ref - s.reconciled_at).total_seconds()
     if abs(age) > pol.reconciliation_max_age_seconds:
         return _r("R3", CheckStatus.FAIL, f"reconciliation age {age:.0f}s")
     return _r("R3", CheckStatus.PASS, f"age {age:.0f}s")
@@ -328,7 +336,22 @@ def r17_window(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
 def r18_event_gate(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
     if p.horizon is Horizon.INTRADAY:
         return _r("R18", CheckStatus.SKIP, "no overnight holding for intraday")
-    return _r("R18", CheckStatus.FAIL, "event calendar not available (Phase 5)")
+    if p.horizon is not Horizon.SWING:
+        return _r("R18", CheckStatus.FAIL, f"no event policy for {p.horizon.value} yet (Phase 6)")
+    if s.event_calendar_synced_at is None:
+        return _r("R18", CheckStatus.FAIL, "event calendar never synced for this instrument")
+    ref = s.evaluated_at or s.as_of
+    age_days = (ref - s.event_calendar_synced_at).total_seconds() / 86_400
+    if age_days > pol.event_calendar_max_age_days:
+        return _r("R18", CheckStatus.FAIL, f"event calendar synced {age_days:.1f} days ago")
+    if s.days_to_next_event is not None and s.days_to_next_event <= pol.event_blackout_days:
+        return _r(
+            "R18",
+            CheckStatus.FAIL,
+            f"event in {s.days_to_next_event} day(s) (blackout {pol.event_blackout_days})",
+        )
+    nxt = "none known" if s.days_to_next_event is None else f"in {s.days_to_next_event} days"
+    return _r("R18", CheckStatus.PASS, f"next event {nxt}")
 
 
 def r19_correlation(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
@@ -343,8 +366,9 @@ def _qty(value: Decimal, p: OrderProposal, s: RiskState) -> int:
 
 def _cost_per_share(p: OrderProposal, costs: CostModel) -> Decimal:
     """Estimated round-trip charges per share at the reference price (100-share basis)."""
-    buy = costs.charges(Side.BUY, 100, p.ref_price, Product.INTRADAY).total
-    sell = costs.charges(Side.SELL, 100, p.ref_price, Product.INTRADAY).total
+    product = Product.INTRADAY if p.horizon is Horizon.INTRADAY else Product.DELIVERY
+    buy = costs.charges(Side.BUY, 100, p.ref_price, product).total
+    sell = costs.charges(Side.SELL, 100, p.ref_price, product).total
     return (buy + sell) / 100
 
 

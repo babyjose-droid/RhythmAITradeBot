@@ -96,3 +96,28 @@ export function riskOutcomeTone(outcome: string): CheckTone {
   if (outcome === "REDUCE") return "reduce";
   return "fail"; // BLOCK, REVIEW and anything unexpected
 }
+
+/** Thesis status -> tone. Invalidated stands out; unknown statuses fail closed. */
+export function thesisTone(status: string): "ok" | "reduce" | "fail" | "skip" {
+  if (status === "OPEN") return "ok";
+  if (status === "PENDING_ENTRY") return "skip";
+  if (status === "CLOSED") return "skip";
+  if (status === "INVALIDATED") return "reduce";
+  return "fail";
+}
+
+/** Human summary of an invalidation rule recorded with a thesis. */
+export function describeRule(rule: Record<string, unknown>): string {
+  switch (rule.rule) {
+    case "close_below_sma":
+      return `close below SMA${String(rule.window)}`;
+    case "stop":
+      return `stop at ₹${String(rule.price)}`;
+    case "max_holding_sessions":
+      return `held ${String(rule.value)} sessions`;
+    case "exit_before_event_days":
+      return `known event within ${String(rule.value)} day(s)`;
+    default:
+      return JSON.stringify(rule);
+  }
+}

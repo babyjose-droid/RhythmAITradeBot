@@ -87,7 +87,15 @@ export interface PaperAccount {
 
 export interface PaperAccountDetail extends PaperAccount {
   realized_pnl: string;
-  positions: { instrument: string; quantity: number; average_price: string; stop: string | null; target: string | null }[];
+  positions: {
+    instrument: string;
+    horizon: string;
+    quantity: number;
+    average_price: string;
+    stop: string | null;
+    target: string | null;
+    opened_at: string | null;
+  }[];
 }
 
 export interface Order {
@@ -228,4 +236,51 @@ export interface Consolidated {
     value: string;
   }[];
   reconciliation: Reconciliation | null;
+}
+
+export interface CalendarEvent {
+  instrument: string;
+  kind: string;
+  event_date: string;
+  days_away: number;
+  known_at: string;
+  source: string;
+  source_ref: string;
+  is_mock: boolean;
+}
+
+export interface EventListing {
+  events: CalendarEvent[];
+  last_sync: Record<string, string | null>;
+}
+
+export interface Thesis {
+  id: number;
+  instrument: string;
+  strategy: string;
+  status: "PENDING_ENTRY" | "OPEN" | "INVALIDATED" | "CLOSED";
+  rationale: string[];
+  invalidation: Record<string, unknown>[];
+  ref_price: string;
+  stop: string | null;
+  target: string | null;
+  entry_order_id: string;
+  opened_at: string;
+  last_checked_at: string | null;
+  last_check: Record<string, unknown>;
+  next_review_at: string | null;
+  closed_at: string | null;
+  close_reason: string | null;
+  data_is_mock: boolean;
+  events?: { at: string; from: string | null; to: string; reason: string }[];
+}
+
+export interface CycleResult {
+  mode: string;
+  horizon: string;
+  new_orders: number;
+  new_fills: number;
+  signals: { instrument: string; type: string; decision: string; failed_checks: string[]; reasons: string[] }[];
+  skipped: Record<string, string>;
+  theses: Record<string, number>;
 }

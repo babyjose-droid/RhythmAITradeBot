@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from rhythm.core.clock import EXCHANGE_TZ
-from rhythm.core.market import DataOrigin, Exchange, InstrumentKey
+from rhythm.core.market import DataOrigin, Exchange, InstrumentKey, round_to_tick
 from rhythm.execution.runner import RiskEnvironment
 from rhythm.marketdata.types import Bar, Interval
 from rhythm.risk.engine import InstrumentFacts
@@ -70,3 +70,51 @@ def sim_env(*keys: InstrumentKey, capital: Decimal = Decimal(1_000_000)) -> Risk
         ledger_allocation=capital,
         instruments={k: facts() for k in (keys or (KEY,))},
     )
+
+
+# ---------------------------------------------------------------------------- daily (swing)
+def trading_days(n: int, end: date = DAY) -> list[date]:
+    """The ``n`` weekdays ending at ``end`` (no holiday list: matches SessionCalendar())."""
+    out: list[date] = []
+    d = end
+    while len(out) < n:
+        if d.weekday() < 5:
+            out.append(d)
+        d -= timedelta(days=1)
+    return out[::-1]
+
+
+def daily(
+    closes: list[str], end: date = DAY, key: InstrumentKey = KEY, vol: int = 500_000
+) -> list[Bar]:
+    """Synthetic MOCK daily bars (open = previous close, +/-1 % range) ending on ``end``."""
+    days = trading_days(len(closes), end)
+    out: list[Bar] = []
+    prev = Decimal(closes[0])
+    for d, c in zip(days, closes, strict=True):
+        close = Decimal(c)
+        hi = max(prev, close) * Decimal("1.01")
+        lo = min(prev, close) * Decimal("0.99")
+        out.append(
+            Bar(
+                key=key,
+                interval=Interval.D1,
+                start=datetime(d.year, d.month, d.day, 9, 15, tzinfo=EXCHANGE_TZ),
+                open=prev,
+                high=round_to_tick(hi, Decimal("0.05")),
+                low=round_to_tick(lo, Decimal("0.05")),
+                close=close,
+                volume=vol,
+                source=DataOrigin.MOCK,
+                received_ts=datetime(d.year, d.month, d.day, 15, 31, tzinfo=EXCHANGE_TZ),
+            )
+        )
+        prev = close
+    return out
+
+
+def uptrend_with_pullback(end: date = DAY) -> list[Bar]:
+    """60 sessions rising 0.5/day, a 2-session dip below SMA20, then a close back above it."""
+    closes = [f"{100 + i * 0.5:.2f}" for i in range(58)]  # ... 128.5
+    closes += ["122.00", "121.50", "130.00"]  # dip below SMA20 (~124), recover above
+    return daily(closes, end)

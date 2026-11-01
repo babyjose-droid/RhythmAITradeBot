@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -23,11 +23,13 @@ from rhythm.backtest.engine import (
     BacktestInputError,
     BacktestResult,
     Split,
+    expected_interval,
     run_backtest,
     run_splits,
 )
 from rhythm.backtest.store import FULL, save_run
-from rhythm.core.market import DataOrigin, InstrumentKey
+from rhythm.core.clock import EXCHANGE_TZ
+from rhythm.core.market import DataOrigin, Horizon, InstrumentKey
 from rhythm.db.models import (
     BacktestRun,
     BacktestTrade,
@@ -38,16 +40,18 @@ from rhythm.db.models import (
     PaperPosition,
     StrategySignalRow,
 )
+from rhythm.events import store as event_store
+from rhythm.events.types import CorporateEvent
 from rhythm.execution.book import ACCOUNT_KIND
 from rhythm.instruments import watchlists as wl_svc
 from rhythm.marketdata.bars import get_bars
 from rhythm.marketdata.provider import MarketDataUnavailableError
-from rhythm.marketdata.types import Bar, Interval
+from rhythm.marketdata.types import Bar
 from rhythm.orders.state import OrderState, display_category
 from rhythm.paper import service as paper
 from rhythm.portfolio import service as portfolio
-from rhythm.strategies.base import params_hash
-from rhythm.strategies.intraday_orb import STRATEGIES, IntradayOrbVwap
+from rhythm.strategies.base import Strategy, params_hash
+from rhythm.strategies.registry import STRATEGIES
 
 router = APIRouter(tags=["trading"])
 
@@ -68,7 +72,7 @@ def _errors() -> Iterator[None]:
         raise HTTPException(503, str(exc)) from exc
 
 
-def _strategy(name: str) -> IntradayOrbVwap:
+def _strategy(name: str) -> Strategy:
     if name not in STRATEGIES:
         raise HTTPException(404, f"unknown strategy {name!r}")
     return STRATEGIES[name]()
@@ -120,9 +124,9 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
     strat = _strategy(body.strategy)
     _aware(body.start, body.end, *[x for s in body.splits for x in (s.start, s.end)])
     keys = tuple(InstrumentKey.parse(s) if ":" in s else parse_key("NSE", s) for s in body.symbols)
-    cfg = BacktestConfig(
-        symbols=keys, start=body.start, end=body.end, initial_capital=body.initial_capital
-    )
+    if len(set(keys)) != len(keys):
+        raise HTTPException(422, "symbols must not contain duplicates")
+    interval = expected_interval(strat)
     bars: dict[InstrumentKey, list[Bar]] = {}
     with _errors():
         for k in keys:
@@ -130,7 +134,7 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
                 bars[k] = [
                     Bar(
                         key=k,
-                        interval=Interval.M5,
+                        interval=interval,
                         start=r.bar_start,
                         open=r.open,
                         high=r.high,
@@ -140,14 +144,27 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
                         source=DataOrigin(r.source),
                         received_ts=r.received_at,
                     )
-                    for r in get_bars(session, k, Interval.M5, body.start, body.end, limit=200_000)
+                    for r in get_bars(session, k, interval, body.start, body.end, limit=200_000)
                 ]
             else:
                 if state.market_data is None:
                     raise HTTPException(503, "no market data provider configured")
-                bars[k] = list(state.market_data.bars(k, Interval.M5, body.start, body.end))
+                bars[k] = list(state.market_data.bars(k, interval, body.start, body.end))
         if not any(bars.values()):
-            raise HTTPException(422, "no 5m bars found for the requested symbols/period")
+            raise HTTPException(
+                422, f"no {interval.value} bars found for the requested symbols/period"
+            )
+        events: dict[InstrumentKey, tuple[CorporateEvent, ...]] = {}
+        if strat.horizon is Horizon.SWING:
+            events = _backtest_events(state, session, keys, body)
+        cfg = BacktestConfig(
+            symbols=keys,
+            start=body.start,
+            end=body.end,
+            interval=interval,
+            initial_capital=body.initial_capital,
+            events=events,
+        )
         results: dict[str, BacktestResult] = {
             FULL: run_backtest(strat, cfg, bars, calendar=state.calendar)
         }
@@ -168,6 +185,26 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
             actor_id=state.settings.local_actor_id,
         )
     return _run_out(run) | {"trades": len(results[FULL].trades)}
+
+
+def _backtest_events(
+    state: StateDep, session: SessionDep, keys: tuple[InstrumentKey, ...], body: BacktestIn
+) -> dict[InstrumentKey, tuple[CorporateEvent, ...]]:
+    """Events for a swing backtest. Only instruments with a source count as covered (R18).
+
+    With the MOCK event provider every instrument is covered by synthetic events. Otherwise
+    stored events are used, and only instruments that were ever synced count as covered.
+    """
+    start = body.start.astimezone(EXCHANGE_TZ).date()
+    end = body.end.astimezone(EXCHANGE_TZ).date() + timedelta(days=60)
+    out: dict[InstrumentKey, tuple[CorporateEvent, ...]] = {}
+    for k in keys:
+        if state.events is not None:
+            out[k] = tuple(state.events.events(k, start, end))
+        elif event_store.last_sync(session, k, state.clock.now()) is not None:
+            far = datetime.max.replace(tzinfo=UTC)
+            out[k] = tuple(event_store.known_events(session, k, far, start, end))
+    return out
 
 
 def _run_out(r: BacktestRun) -> dict[str, Any]:
@@ -301,6 +338,7 @@ def account_detail(account_id: int, session: SessionDep, response: Response) -> 
         "positions": [
             {
                 "instrument": f"{p.exchange}:{p.symbol}",
+                "horizon": p.horizon,
                 "quantity": p.quantity,
                 "average_price": str(p.average_price),
                 "stop": None if p.stop is None else str(p.stop),
@@ -343,16 +381,22 @@ def _order_out(o: OrderRow) -> dict[str, Any]:
 
 @router.get("/v1/paper/accounts/{account_id}/orders")
 def orders(
-    account_id: int, session: SessionDep, response: Response, limit: int = Query(200, ge=1, le=2000)
+    account_id: int,
+    session: SessionDep,
+    response: Response,
+    horizon: Horizon | None = None,
+    limit: int = Query(200, ge=1, le=2000),
 ) -> list[dict[str, Any]]:
     _paper(response)
-    rows = session.execute(
+    stmt = (
         select(OrderRow)
         .where(OrderRow.account_id == account_id)
         .order_by(OrderRow.created_at.desc(), OrderRow.id)
         .limit(limit)
-    ).scalars()
-    return [_order_out(o) for o in rows]
+    )
+    if horizon is not None:
+        stmt = stmt.where(OrderRow.horizon == horizon.value)
+    return [_order_out(o) for o in session.execute(stmt).scalars()]
 
 
 @router.get("/v1/paper/orders/{order_id}/events")
@@ -508,9 +552,12 @@ def signals(
     session: SessionDep,
     account_id: int | None = None,
     context: Literal["PAPER", "RESEARCH"] | None = None,
+    horizon: Horizon | None = None,
     limit: int = Query(100, ge=1, le=1000),
 ) -> list[dict[str, Any]]:
     stmt = select(StrategySignalRow).order_by(StrategySignalRow.id.desc()).limit(limit)
+    if horizon is not None:
+        stmt = stmt.where(StrategySignalRow.horizon == horizon.value)
     if account_id is not None:
         stmt = stmt.where(StrategySignalRow.account_id == account_id)
     if context:
@@ -523,6 +570,7 @@ def signals(
             "instrument": f"{s.exchange}:{s.symbol}",
             "strategy": f"{s.strategy}@{s.version}",
             "signal_type": s.signal_type,
+            "horizon": s.horizon,
             "decision_state": s.decision_state,
             "decided_at": s.decided_at,
             "ref_price": str(s.ref_price),

@@ -1,10 +1,12 @@
 # Risk Management
 
-**Status:** Implemented in Phase 4 (`src/rhythm/risk/engine.py`, policy `paper-default-1`, engine `risk-engine-1.0`). Limits below are **illustrative paper-test placeholders, not recommendations.** Real limits must be set by the account owner with qualified oversight.
+**Status:** Implemented in Phase 4. Phase 5 adds the swing event gate (R18) and ledger-scoped R8, giving policy `paper-default-2` and engine `risk-engine-1.1`. Limits below are **illustrative paper-test placeholders, not recommendations.** Real limits must be set by the account owner with qualified oversight.
 
 **As built:**
 - **R1–R17:** implemented.
-- **R18:** blocks non-intraday entries until an event calendar exists (Phase 5).
+- **R18** (Phase 5): swing entries need an event-calendar sync within `event_calendar_max_age_days` (7) and no known event within `event_blackout_days` (3). LONG_TERM is still blocked until Phase 6.
+- **R8** (Phase 5): measured per ledger, as today's cash flow from the ledger's own fills plus the change in its positions' value.
+- **R3** (Phase 5): reconciliation age is measured against the cycle's wall-clock time.
 - **R11 / R19:** SKIP with a stated reason (no sector or correlation source).
 - **R20** (added): a sell may not exceed the ledger's own holding.
 

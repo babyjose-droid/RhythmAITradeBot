@@ -11,7 +11,11 @@
 
 **Cash and funds.** Cash is shared at account level, and R13 checks available funds net of open BUY reservations.
 
-**Still to build.** Orchestration netting across horizons (§3 step 2) arrives with the swing ledger in Phase 5.
+**Phase 5.**
+- **INTRADAY and SWING** run as separate ledgers, each with its own book, cycle state and daily P&L. They share account cash, and consolidated single-name exposure (R10) spans both.
+- **Kill switch:** cancels entries in both ledgers.
+
+**Still to build.** Explicit netting of offsetting intents across horizons in the same cycle (§3 step 2). Today each ledger acts independently, and the consolidated checks catch concentration.
 
 ## 1. Model
 

@@ -140,6 +140,12 @@ type = "forbidden"
 source_modules = ["rhythm.controls", "rhythm.portfolio", "rhythm.paper"]
 forbidden_modules = ["rhythm.api", "rhythm.broker"]
 
+[[tool.importlinter.contracts]]
+name = "Event types and the mock event source are pure"
+type = "forbidden"
+source_modules = ["rhythm.events.types", "rhythm.events.mock"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.broker", "rhythm.paper", "rhythm.audit"]
+
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small
 # untyped helpers; strictness is kept for src/.

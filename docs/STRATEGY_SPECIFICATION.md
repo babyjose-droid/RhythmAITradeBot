@@ -16,9 +16,26 @@
 - Exits: stop, target (R-multiple), VWAP loss, end-of-session policy.
 - Chosen because it is simple, explainable and testable — a baseline, not an edge claim.
 
-## 3. Swing (Phase 5) — candidate: trend pullback / breakout
+## 3. Swing (Phase 5) — implemented: `swing_trend_pullback@1.0.0`
 
-Daily bars; trend filter (e.g. price above 50/200-day averages), pullback to support or breakout of N-day range on volume; invalidation level; time stop; event gate (results date within N days ⇒ block or reduce); gap-risk sizing.
+**Bars and timing.** Daily bars. The decision is taken at the session close, and fills happen at the next open.
+
+**Entry rules:**
+- **Trend:** close > SMA50 and SMA20 > SMA50.
+- **Trigger:** a close back above SMA20 after a close at or below it within the previous 5 sessions.
+- **Stop:** the 10-session low, required to be 1–8 % below the entry.
+- **Target:** 2R.
+- **Event filter:** no entry within 5 days of a known event. The risk engine's R18 also blocks within 3 days, or without a recent calendar sync.
+
+**Thesis.** Stored with the entry: rationale, plus invalidation rules (`close_below_sma 50`, `stop`, `max_holding_sessions 20`, `exit_before_event_days 1`).
+
+**Exits:**
+- close below SMA50 (thesis invalidated);
+- time stop;
+- a known event within 1 day;
+- stop/target as protective orders kept across sessions.
+
+**Not implemented:** gap-risk sizing (see KNOWN_LIMITATIONS), 200-day filter and breakout variant (a possible v2). Parameters are frozen for v1.0.0.
 
 ## 4. Long-term (Phase 6) — evidence-based thesis tracking
 

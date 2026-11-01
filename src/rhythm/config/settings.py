@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     # Phase 2: data sources. "none" means no source configured -> data reported MISSING.
     market_data_provider: Literal["none", "mock"] = "none"
     broker_adapter: Literal["none", "mock"] = "none"
+    event_provider: Literal["none", "mock"] = "none"  # corporate-event calendar (R18)
     freshness_intraday_max_age_seconds: float = Field(default=10.0, gt=0, le=300)
     # Identity recorded in audit events for local, unauthenticated use (auth arrives in Phase 8).
     local_actor_id: str = Field(default="local-owner", min_length=1, max_length=100)
@@ -97,7 +98,7 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "placeholder database credentials are not allowed outside local/test"
                 )
-            if "mock" in (self.market_data_provider, self.broker_adapter):
+            if "mock" in (self.market_data_provider, self.broker_adapter, self.event_provider):
                 raise ValueError("mock data sources are not allowed outside local/test")
         if self.features.paper_trading and self.trading_mode is not TradingMode.PAPER:
             raise ValueError("paper_trading feature requires trading_mode=PAPER")

@@ -16,6 +16,7 @@ from rhythm.core.clock import Clock
 from rhythm.core.logging import get_logger
 from rhythm.db.models import SystemHealthEvent
 from rhythm.db.session import session_scope
+from rhythm.events.types import EventProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
 from rhythm.marketdata.provider import MarketDataProvider
 
@@ -33,6 +34,7 @@ class AppState:
     market_data: MarketDataProvider | None
     broker: BrokerReadAdapter | None
     freshness: FreshnessMonitor
+    events: EventProvider | None = None
     _last_ready: bool | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

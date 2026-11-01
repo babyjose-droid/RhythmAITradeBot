@@ -16,6 +16,14 @@ Data feed stale · broker 403/token expired · 429 storm · RMS down (502) · re
 
 `/health/live`, `/health/ready`, scheduler heartbeat, `system_health_events`.
 
+## Swing routine (PAPER, Phase 5)
+
+After the close (from about 15:45 IST): sync the event calendar (at least weekly; R18 requires ≤ 7 days), run the PAPER swing cycle, then review the Swing workspace:
+- theses marked INVALIDATED have an exit queued for the next open;
+- watch the "never — entries blocked" coverage rows.
+
+The next morning's cycle is not needed: fills happen when the next after-close cycle processes that session.
+
 ## Phase 4 control procedures (PAPER)
 
 - **Kill switch:**

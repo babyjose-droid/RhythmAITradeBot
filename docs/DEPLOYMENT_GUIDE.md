@@ -14,6 +14,8 @@ Every push to `main` that passes all CI checks publishes the API image to GitHub
 - `ghcr.io/babyjose-droid/rhythmaitradebot:sha-<7-char-commit>` — immutable, per commit
 - `ghcr.io/babyjose-droid/rhythmaitradebot-web:main` and `:sha-<commit>` — dashboard image (Phase 3)
 
+Settings added in Phase 5: `RHYTHM_EVENT_PROVIDER` (`none` default; `mock` allowed only in local/test — refused in staging/production like the other mock sources).
+
 Optional Docker Hub mirror (`rhythmconsultancy/rhythm-ai-trader`): the CI step runs only if the repository secret `DOCKERHUB_TOKEN` exists (owner adds it in GitHub → Settings → Secrets; never in code).
 
 Pull and run (with a PostgreSQL URL of your own):

@@ -2,7 +2,7 @@
 
 AI-assisted research, portfolio decision-support and paper-trading platform for Indian cash equities (initial broker: Sharekhan). Claude is advisory only; deterministic strategy rules, portfolio accounting and an independent risk engine decide whether a candidate may become an order. **Live trading is disabled by default and is not implemented.** Nothing in this project promises returns.
 
-**Current phase: 4 — Risk engine, ledgers, kill switch, idempotency, reconciliation (complete, awaiting review before Phase 5).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_4_REPORT.md`.
+**Current phase: 5 — Swing strategy, event gate, thesis tracking, multi-day PAPER (complete, awaiting review before Phase 6).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_5_REPORT.md`.
 
 ## Quick start (local)
 
@@ -48,6 +48,19 @@ curl "http://127.0.0.1:8000/v1/portfolio/consolidated?account_id=1"
 ```
 Dashboard: **Risk & controls** and **Portfolio & reconciliation** screens.
 
+Phase 5 — swing (daily bars, multi-day PAPER positions with theses). Run after the close:
+
+```bash
+RHYTHM_EVENT_PROVIDER=mock ...rhythm-api                     # plus the PAPER settings above
+curl -X POST localhost:8000/v1/events/sync -H 'Idempotency-Key: sync-0001' \
+     -H 'content-type: application/json' -d '{"watchlist_id":1}'      # R18 needs a synced calendar
+curl -X POST localhost:8000/v1/paper/accounts/1/cycle -H 'Idempotency-Key: swing-0001' \
+     -H 'content-type: application/json' -d '{"watchlist_id":1,"strategy":"swing_trend_pullback"}'
+curl "localhost:8000/v1/theses?account_id=1"
+.venv/bin/rhythm-cli backtest-run --strategy swing_trend_pullback --days 400
+```
+Dashboard: **Swing workspace**.
+
 Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the only orders are simulated PAPER orders (DB-enforced `account_kind='PAPER'`); no broker order method exists; API and dashboard listen on loopback only (no auth until Phase 8).
 
 ## Phase 0 findings (2026-10-31)
@@ -67,7 +80,7 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 | 2 ✅ | Instruments/watchlists, scrip-master snapshots, MarketDataProvider + mock, freshness monitor, data-quality events, Sharekhan adapter **read-only** behind interface (mocks; supervised read-only verification only with approval) | Stale-data detection tests; provenance on every datum; MOCK labelled |
 | 3 ✅ | Intraday baseline strategy, event-driven backtester with cost model, paper order lifecycle & fill simulator, first dashboard screens | Deterministic backtests; look-ahead canaries; paper state-machine tests; PAPER banners |
 | 4 ✅ | Risk engine (all checks), ledgers + consolidated view, kill switch/pauses, idempotency, reconciliation | Every risk rule unit-tested; fail-closed tests; duplicate/UNKNOWN scenarios |
-| 5 | Swing strategy, overnight/event gate, thesis invalidation, paper workflow | Backtests + paper tests |
+| 5 ✅ | Swing strategy, overnight/event gate, thesis invalidation, paper workflow | Backtests + paper tests |
 | 6 | Long-term fundamentals evidence model, thesis/valuation tracking, allocation, review schedule | Requires licensed data (D-03) or runs MOCK-labelled |
 | 7 | Claude research service: versioned prompts, evidence packets, schema validation, timeouts/retries/budget, safe fallback | Injection & malformed-output tests; no path to orders |
 | 8 | Full UX: 8 screens, approvals, notifications, audit views | Candidate/Approved/At-broker/Fill visually distinct |
@@ -76,4 +89,4 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

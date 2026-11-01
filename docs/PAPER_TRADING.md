@@ -18,6 +18,14 @@
 - **Fills:** the same fill model and versioned cost model as backtests (see BACKTESTING_METHODOLOGY.md). Long-only.
 - **States shown in the UI:** Candidate (idea) → Approved, not sent → At broker, not filled → Partially filled → Filled, plus Closed without fill and Needs attention. Each state has a different label, colour and border style.
 
+## Swing (Phase 5)
+
+- **Running a cycle:** same endpoint, with `strategy: swing_trend_pullback`. Run after the close.
+- **First cycle:** warms up on history and decides on the latest session. Later cycles process every unseen session; only the latest, with a FRESH daily bar, may open positions.
+- **Orders:** DELIVERY product. Entries fill at the next open; unfilled entry quantity expires after one session. Stop/target are kept across sessions. Exits are re-sent until the position is flat (fills are capped at 10 % of session volume).
+- **Theses:** each entry has a thesis (`PENDING_ENTRY → OPEN → INVALIDATED → CLOSED`), checked every session, with append-only history. API: `GET /v1/theses`, `GET /v1/theses/{id}`.
+- **Event calendar:** sync with `POST /v1/events/sync`. R18 blocks entries without a sync in the last 7 days, or when an event is ≤ 3 days away.
+
 ## Still to do
 
 - Latency and rejection simulation (price band, funds) — Phase 4/9.

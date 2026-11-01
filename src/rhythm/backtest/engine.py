@@ -1,4 +1,4 @@
-"""Event-driven, chronological backtester for intraday strategies.
+"""Event-driven, chronological backtester for intraday (5-minute) and swing (daily) strategies.
 
 Reuses the exact runner, PAPER book, fill model, cost model and risk gate used by paper
 trading. Reproducible: the same inputs always produce the same ``run_hash`` and results.
@@ -20,11 +20,18 @@ from typing import Any
 
 from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import EXCHANGE_TZ, ensure_utc
-from rhythm.core.market import InstrumentKey
+from rhythm.core.market import Horizon, InstrumentKey
+from rhythm.events.types import CorporateEvent
 from rhythm.execution.book import PaperBook
 from rhythm.execution.costs import CostModel, Side
 from rhythm.execution.fills import FillModel
-from rhythm.execution.runner import IntradayRunner, RiskEnvironment, SignalRecord
+from rhythm.execution.runner import (
+    BaseRunner,
+    IntradayRunner,
+    RiskEnvironment,
+    SignalRecord,
+    SwingRunner,
+)
 from rhythm.marketdata.types import Bar, Interval
 from rhythm.risk.engine import InstrumentFacts
 from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
@@ -56,6 +63,9 @@ class BacktestConfig:
     ledger_allocation_pct: Decimal = Decimal(1)
     # Instrument facts for R5/R6. Missing symbols get MOCK-style defaults (EQ, lot 1, tick 0.05).
     instruments: Mapping[InstrumentKey, InstrumentFacts] = field(default_factory=dict)
+    # Swing: corporate events per instrument (point-in-time via known_at). An instrument
+    # missing here has no event coverage, so R18 blocks its swing entries (fail closed).
+    events: Mapping[InstrumentKey, tuple[CorporateEvent, ...]] = field(default_factory=dict)
 
     def facts(self, key: InstrumentKey) -> InstrumentFacts:
         return self.instruments.get(key) or InstrumentFacts(
@@ -121,14 +131,32 @@ def run_hash(strategy: Strategy, cfg: BacktestConfig, dhash: str) -> str:
         "cost_model": cfg.cost_model.describe(),
         "fill_model": cfg.fill_model.describe(),
         "risk": cfg.describe_risk(),
+        "events": _events_digest(cfg.events),
         "data_hash": dhash,
     }
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
 
 
+def _events_digest(events: Mapping[InstrumentKey, tuple[CorporateEvent, ...]]) -> str:
+    h = hashlib.sha256()
+    for key in sorted(events):
+        h.update(f"{key}|covered\n".encode())
+        for e in events[key]:
+            h.update(
+                f"{e.kind.value}|{e.event_date}|{e.known_at.isoformat()}|{e.source}\n".encode()
+            )
+    return h.hexdigest()
+
+
+def expected_interval(strategy: Strategy) -> Interval:
+    return Interval.D1 if strategy.horizon is Horizon.SWING else Interval.M5
+
+
 def _validate(cfg: BacktestConfig, bars: Mapping[InstrumentKey, Sequence[Bar]]) -> None:
     if cfg.end <= cfg.start:
         raise BacktestInputError("end must be after start")
+    if len(set(cfg.symbols)) != len(cfg.symbols):
+        raise BacktestInputError("symbols must not contain duplicates")
     for key in cfg.symbols:
         prev = None
         for b in bars.get(key, ()):
@@ -147,19 +175,33 @@ def run_backtest(
     calendar: SessionCalendar | None = None,
 ) -> BacktestResult:
     calendar = calendar or SessionCalendar()
+    if cfg.interval is not expected_interval(strategy):
+        raise BacktestInputError(
+            f"{strategy.name} needs {expected_interval(strategy).value} bars, "
+            f"got {cfg.interval.value}"
+        )
     start, end = ensure_utc(cfg.start), ensure_utc(cfg.end)
     window = {k: [b for b in bars.get(k, ()) if start <= b.start < end] for k in cfg.symbols}
     _validate(cfg, window)
     dhash = data_hash(window)
-    book = PaperBook(cash=cfg.initial_capital, cost_model=cfg.cost_model, fill_model=cfg.fill_model)
+    book = PaperBook(
+        cash=cfg.initial_capital,
+        cost_model=cfg.cost_model,
+        fill_model=cfg.fill_model,
+        horizon=strategy.horizon,
+    )
     env = RiskEnvironment(
         mode="BACKTEST",
         policy=cfg.policy,
         book_is_truth=True,
         ledger_allocation=cfg.initial_capital * cfg.ledger_allocation_pct,
         instruments={k: cfg.facts(k) for k in cfg.symbols},
+        events={k: tuple(v) for k, v in cfg.events.items()},
     )
-    runner = IntradayRunner(strategy=strategy, book=book, calendar=calendar, env=env)
+    runner_cls: type[BaseRunner] = (
+        SwingRunner if strategy.horizon is Horizon.SWING else IntradayRunner
+    )
+    runner = runner_cls(strategy=strategy, book=book, calendar=calendar, env=env)
 
     timeline = sorted((b.start, str(b.key), b) for k in cfg.symbols for b in window[k])
     equity_curve: list[tuple[datetime, Decimal]] = []
@@ -231,6 +273,7 @@ def run_splits(
             policy=cfg.policy,
             ledger_allocation_pct=cfg.ledger_allocation_pct,
             instruments=cfg.instruments,
+            events=cfg.events,
         )
         out[s.name] = run_backtest(strategy, sub, bars, calendar=calendar)
     return out

@@ -15,7 +15,15 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 
 from rhythm import __version__
-from rhythm.api.routes import instruments, marketdata, risk, system, trading, watchlists
+from rhythm.api.routes import (
+    instruments,
+    marketdata,
+    risk,
+    swing,
+    system,
+    trading,
+    watchlists,
+)
 from rhythm.api.state import AppState
 from rhythm.audit import ActorType, AuditLog
 from rhythm.broker.base import BrokerReadAdapter
@@ -25,6 +33,8 @@ from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import Clock, SystemClock
 from rhythm.core.logging import configure_logging, get_logger
 from rhythm.db.session import create_db_engine, create_session_factory, session_scope
+from rhythm.events.mock import MockEventProvider
+from rhythm.events.types import EventProvider
 from rhythm.marketdata.freshness import FreshnessPolicy
 from rhythm.marketdata.mock import MockMarketDataProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
@@ -48,6 +58,7 @@ def _audit_lifecycle(state: AppState, event_type: str) -> None:
                     "features": state.settings.features.model_dump(),
                     "market_data_provider": state.settings.market_data_provider,
                     "broker_adapter": state.settings.broker_adapter,
+                    "event_provider": state.settings.event_provider,
                 },
             )
     except Exception:
@@ -59,6 +70,12 @@ def build_market_data(
 ) -> MarketDataProvider | None:
     if settings.market_data_provider == "mock":
         return MockMarketDataProvider(clock=clock, calendar=calendar)
+    return None
+
+
+def build_events(settings: Settings) -> EventProvider | None:
+    if settings.event_provider == "mock":
+        return MockEventProvider()
     return None
 
 
@@ -76,6 +93,7 @@ def create_app(
     market_data: MarketDataProvider | None = None,
     broker: BrokerReadAdapter | None = None,
     calendar: SessionCalendar | None = None,
+    events: EventProvider | None = None,
     configure_logs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()  # raises on unsafe config (e.g. LIVE)
@@ -103,6 +121,7 @@ def create_app(
                 intraday_max_age=timedelta(seconds=settings.freshness_intraday_max_age_seconds)
             ),
         ),
+        events=events or build_events(settings),
     )
 
     @asynccontextmanager
@@ -171,4 +190,5 @@ def create_app(
     app.include_router(marketdata.router)
     app.include_router(trading.router)
     app.include_router(risk.router)
+    app.include_router(swing.router)
     return app

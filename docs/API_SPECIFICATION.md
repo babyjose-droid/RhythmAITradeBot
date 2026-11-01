@@ -1,6 +1,6 @@
 # Internal API Specification (initial)
 
-**Status:** Phases 1–4 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
+**Status:** Phases 1–5 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
 
 | Method | Path | Phase | Notes |
 |---|---|---|---|
@@ -24,6 +24,9 @@
 | PUT | `/v1/paper/accounts/{id}/ledgers/{horizon}` | 4 ✅ | allocation change; reason required; total ≤ starting capital |
 | POST | `/v1/paper/accounts/{id}/reconcile` · GET `/v1/reconciliations?account_id=` | 4 ✅ | a break activates the kill switch |
 | POST | `/v1/approvals/{order_id}` | 4/8 | approve/reject with reason |
+| POST | `/v1/events/sync` · POST `/v1/events` · GET `/v1/events?watchlist_id=` | 5 ✅ | event calendar. Sync = coverage proof for R18. Manual entries need `source_ref`; `known_at` ≤ now |
+| GET | `/v1/theses?account_id=&status=` · GET `/v1/theses/{id}` | 5 ✅ | swing theses with append-only history |
+| POST | `/v1/paper/accounts/{id}/cycle` with `strategy: swing_trend_pullback` | 5 ✅ | swing PAPER cycle (after the close). Orders and signals accept `?horizon=` |
 | GET | `/v1/research/assessments/{id}` | 7 | packet, sources, output, validation result |
 | GET | `/v1/broker/login-url` · GET `/v1/broker/callback` | 2 (read-only verification, after approval) | state validation; server-side token exchange |
 | GET | `/v1/audit/events` | 1+ | |

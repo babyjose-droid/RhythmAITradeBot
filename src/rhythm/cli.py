@@ -51,7 +51,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_seed.add_argument("--horizon", default="INTRADAY", choices=list(wl_svc.WATCHLIST_HORIZONS))
     p_seed.add_argument("--count", type=int, default=5)
 
-    p_bt = sub.add_parser("backtest-run", help="backtest the intraday baseline on MOCK 5m bars")
+    p_bt = sub.add_parser(
+        "backtest-run", help="backtest a strategy on MOCK bars (5m intraday, daily swing)"
+    )
+    p_bt.add_argument(
+        "--strategy",
+        default="intraday_orb_vwap",
+        choices=["intraday_orb_vwap", "swing_trend_pullback"],
+    )
     p_bt.add_argument("--symbols", default="NSE:MOCKA,NSE:MOCKB,NSE:MOCKC")
     p_bt.add_argument("--days", type=int, default=30)
     p_bt.add_argument("--capital", default="1000000")
@@ -121,19 +128,36 @@ def _run(args: argparse.Namespace) -> int:
     if args.cmd == "backtest-run":
         from decimal import Decimal  # noqa: PLC0415
 
-        from rhythm.backtest.engine import BacktestConfig, run_backtest  # noqa: PLC0415
+        from rhythm.backtest.engine import (  # noqa: PLC0415
+            BacktestConfig,
+            expected_interval,
+            run_backtest,
+        )
         from rhythm.backtest.store import FULL, save_run  # noqa: PLC0415
-        from rhythm.strategies.intraday_orb import IntradayOrbVwap  # noqa: PLC0415
+        from rhythm.core.market import Horizon  # noqa: PLC0415
+        from rhythm.events.mock import MockEventProvider  # noqa: PLC0415
+        from rhythm.strategies.registry import get_strategy  # noqa: PLC0415
 
         keys = tuple(InstrumentKey.parse(x) for x in args.symbols.split(","))
         cal = SessionCalendar()
         provider = MockMarketDataProvider(clock=clock, calendar=cal)
         end = clock.now()
         start = end - timedelta(days=args.days)
-        bt_bars = {k: list(provider.bars(k, Interval.M5, start, end)) for k in keys}
-        strat = IntradayOrbVwap()
+        strat = get_strategy(args.strategy)
+        interval = expected_interval(strat)
+        bt_bars = {k: list(provider.bars(k, interval, start, end)) for k in keys}
+        events = {}
+        if strat.horizon is Horizon.SWING:
+            ev = MockEventProvider()
+            horizon_end = end.date() + timedelta(days=60)
+            events = {k: tuple(ev.events(k, start.date(), horizon_end)) for k in keys}
         cfg = BacktestConfig(
-            symbols=keys, start=start, end=end, initial_capital=Decimal(args.capital)
+            symbols=keys,
+            start=start,
+            end=end,
+            interval=interval,
+            initial_capital=Decimal(args.capital),
+            events=events,
         )
         bt = run_backtest(strat, cfg, bt_bars, calendar=cal)
         with session_scope(factory) as s:

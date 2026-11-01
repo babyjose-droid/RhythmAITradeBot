@@ -20,6 +20,10 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 5:** the only event source is MOCK (synthetic results dates). A real corporate-actions/results calendar is needed (B-06), so swing PAPER on real data stays blocked by R18 until one is configured.
+- **Phase 5:** no gap-risk sizing. An overnight gap beyond the stop fills at the open and can exceed the planned loss (R7 assumes the stop price).
+- **Phase 5:** swing positions are not adjusted for corporate actions (splits/bonus) — no source yet.
+- **Phase 5:** MOCK daily volume is erratic. With the 10 % participation cap this can produce partial fills that take several sessions to exit.
 - **Phase 4:** no sector, correlation or event-calendar source. R11 and R19 are skipped (reason recorded), and R18 blocks swing/long-term entries until Phase 5.
 - **Phase 4:** the circuit-band check (R6) runs only when the data source supplies the band; MOCK quotes do not.
 - **Phase 4:** ADV for R12 comes from stored daily bars when present. Otherwise it is the mean of earlier sessions in the run or an estimate from today's bars (the source is recorded with the decision).

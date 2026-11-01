@@ -1,6 +1,21 @@
 # Test Plan
 
-**Status:** Phase 4: 286 Python tests (unit + integration on real PostgreSQL) and 5 web tests, all passing on 2026-10-31. Exact output is in the PHASE_1–4 reports.
+**Status:** Phase 5: 322 Python tests (unit + integration on real PostgreSQL) and 6 web tests, all passing on 2026-11-01. Exact output is in the PHASE_1–5 reports.
+
+## Phase 5 coverage
+
+- **Swing strategy:** entry with thesis, insufficient history, no trend, event proximity, the three exit reasons, holding with no reason.
+- **Look-ahead:** a future announcement and the daily bar end.
+- **Event source:** mock events are deterministic and announced ahead; point-in-time queries.
+- **Gates and policy:** R18 (unsynced, stale, blackout boundary, none known, long-term), R3 against evaluation time, delivery cost rates, event-policy bounds.
+- **SwingRunner:** multi-day lifecycle (DELIVERY orders, fill at the next open, protection kept across sessions), R18 blocking without coverage, unfilled-entry expiry, rejection of intraday bars, tick snapping, ledger-scoped P&L.
+- **Swing backtests:** determinism, event sensitivity, prefix invariance, interval/horizon check.
+- **Integration:**
+  - event sync, listing and manual entry;
+  - R18 before a sync;
+  - full multi-session thesis lifecycle with reconciliation and the append-only trigger;
+  - swing research cycle creating no orders or theses;
+  - swing backtest API with splits, and without an event source.
 
 ## Phase 4 coverage
 

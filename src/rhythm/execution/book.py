@@ -106,6 +106,7 @@ class PaperBook:
     id_factory: Callable[[str], str] | None = None
     venue: OrderVenue = field(default_factory=PaperVenue)
     horizon: Horizon = Horizon.INTRADAY
+    flow: Decimal = Decimal(0)  # net cash flow from this book's fills (ledger-scoped P&L)
     _seq: Iterator[int] = field(default_factory=lambda: itertools.count(1))
     _by_idem: dict[str, str] = field(default_factory=dict)
 
@@ -273,10 +274,12 @@ class PaperBook:
             pos.quantity = new_qty
             pos.opened_at = pos.opened_at or at
             self.cash -= value + charges.total
+            self.flow -= value + charges.total
         else:
             pos.realized_pnl += (price - pos.average_price) * quantity
             pos.quantity -= quantity
             self.cash += value - charges.total
+            self.flow += value - charges.total
             if pos.quantity == 0:
                 pos.average_price = Decimal(0)
                 pos.opened_at = None
