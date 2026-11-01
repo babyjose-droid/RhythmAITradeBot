@@ -24,9 +24,10 @@ from rhythm.core.market import InstrumentKey
 from rhythm.execution.book import PaperBook
 from rhythm.execution.costs import CostModel, Side
 from rhythm.execution.fills import FillModel
-from rhythm.execution.runner import IntradayRunner, SignalRecord
+from rhythm.execution.runner import IntradayRunner, RiskEnvironment, SignalRecord
 from rhythm.marketdata.types import Bar, Interval
-from rhythm.risk.baseline import BaselineRiskLimits
+from rhythm.risk.engine import InstrumentFacts
+from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
 from rhythm.strategies.base import Strategy, params_hash
 
 
@@ -50,7 +51,22 @@ class BacktestConfig:
     initial_capital: Decimal = Decimal(1_000_000)
     cost_model: CostModel = field(default_factory=CostModel)
     fill_model: FillModel = field(default_factory=FillModel)
-    limits: BaselineRiskLimits = field(default_factory=BaselineRiskLimits)
+    policy: RiskPolicy = DEFAULT_POLICY
+    # Share of capital the intraday ledger may use. 1 = test the strategy in isolation.
+    ledger_allocation_pct: Decimal = Decimal(1)
+    # Instrument facts for R5/R6. Missing symbols get MOCK-style defaults (EQ, lot 1, tick 0.05).
+    instruments: Mapping[InstrumentKey, InstrumentFacts] = field(default_factory=dict)
+
+    def facts(self, key: InstrumentKey) -> InstrumentFacts:
+        return self.instruments.get(key) or InstrumentFacts(
+            active=True, instrument_type="EQ", lot_size=1, tick_size=Decimal("0.05")
+        )
+
+    def describe_risk(self) -> dict[str, Any]:
+        return {
+            "policy": self.policy.describe(),
+            "ledger_allocation_pct": str(self.ledger_allocation_pct),
+        }
 
 
 @dataclass(frozen=True)
@@ -104,7 +120,7 @@ def run_hash(strategy: Strategy, cfg: BacktestConfig, dhash: str) -> str:
         "initial_capital": str(cfg.initial_capital),
         "cost_model": cfg.cost_model.describe(),
         "fill_model": cfg.fill_model.describe(),
-        "limits": cfg.limits.describe(),
+        "risk": cfg.describe_risk(),
         "data_hash": dhash,
     }
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
@@ -136,7 +152,14 @@ def run_backtest(
     _validate(cfg, window)
     dhash = data_hash(window)
     book = PaperBook(cash=cfg.initial_capital, cost_model=cfg.cost_model, fill_model=cfg.fill_model)
-    runner = IntradayRunner(strategy=strategy, book=book, calendar=calendar, limits=cfg.limits)
+    env = RiskEnvironment(
+        mode="BACKTEST",
+        policy=cfg.policy,
+        book_is_truth=True,
+        ledger_allocation=cfg.initial_capital * cfg.ledger_allocation_pct,
+        instruments={k: cfg.facts(k) for k in cfg.symbols},
+    )
+    runner = IntradayRunner(strategy=strategy, book=book, calendar=calendar, env=env)
 
     timeline = sorted((b.start, str(b.key), b) for k in cfg.symbols for b in window[k])
     equity_curve: list[tuple[datetime, Decimal]] = []
@@ -205,7 +228,9 @@ def run_splits(
             initial_capital=cfg.initial_capital,
             cost_model=cfg.cost_model,
             fill_model=cfg.fill_model,
-            limits=cfg.limits,
+            policy=cfg.policy,
+            ledger_allocation_pct=cfg.ledger_allocation_pct,
+            instruments=cfg.instruments,
         )
         out[s.name] = run_backtest(strategy, sub, bars, calendar=calendar)
     return out

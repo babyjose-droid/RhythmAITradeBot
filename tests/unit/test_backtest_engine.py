@@ -24,7 +24,7 @@ from rhythm.marketdata.types import Interval
 from rhythm.orders.state import OrderState
 from rhythm.strategies.base import DecisionState
 from rhythm.strategies.intraday_orb import IntradayOrbVwap
-from tests.phase3_helpers import KEY, bar, breakout_day, t
+from tests.phase3_helpers import KEY, bar, breakout_day, sim_env, t
 
 CAL = SessionCalendar()
 END = datetime(2026, 10, 31, 0, 0, tzinfo=EXCHANGE_TZ)
@@ -43,7 +43,7 @@ FULL = cfg(END - timedelta(days=28), END)
 # ------------------------------------------------------------------ runner mechanics
 def test_runner_entry_fills_next_bar_and_protection_attached() -> None:
     book = PaperBook(cash=Decimal(1_000_000), fill_model=FillModel(max_participation=Decimal(1)))
-    runner = IntradayRunner(IntradayOrbVwap(), book, CAL)
+    runner = IntradayRunner(IntradayOrbVwap(), book, CAL, env=sim_env())
     recs = []
     for b in breakout_day():
         recs += runner.on_bar(b)[1]
@@ -63,7 +63,7 @@ def test_runner_entry_fills_next_bar_and_protection_attached() -> None:
 
 def test_same_bar_stop_after_entry_is_conservative() -> None:
     book = PaperBook(cash=Decimal(1_000_000), fill_model=FillModel(max_participation=Decimal(1)))
-    runner = IntradayRunner(IntradayOrbVwap(), book, CAL)
+    runner = IntradayRunner(IntradayOrbVwap(), book, CAL, env=sim_env())
     for b in breakout_day():
         runner.on_bar(b)
     runner.on_bar(
@@ -75,7 +75,7 @@ def test_same_bar_stop_after_entry_is_conservative() -> None:
 
 def test_session_square_off_leaves_no_overnight_position() -> None:
     book = PaperBook(cash=Decimal(1_000_000), fill_model=FillModel(max_participation=Decimal(1)))
-    runner = IntradayRunner(IntradayOrbVwap(), book, CAL)
+    runner = IntradayRunner(IntradayOrbVwap(), book, CAL, env=sim_env())
     for b in breakout_day():
         runner.on_bar(b)
     runner.on_bar(bar(t(9, 35), "101.9", "102.5", "101.5", "102.2", 4000))

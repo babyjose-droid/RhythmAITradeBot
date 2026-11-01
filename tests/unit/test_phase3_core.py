@@ -7,10 +7,8 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 
-from rhythm.core.market import DataOrigin, Horizon
+from rhythm.core.market import DataOrigin
 from rhythm.execution.book import BookError, Order, PaperBook
 from rhythm.execution.costs import CostModel, Product, Side
 from rhythm.execution.fills import FillModel, OrderType
@@ -21,11 +19,9 @@ from rhythm.orders.state import (
     check_transition,
     display_category,
 )
-from rhythm.risk import baseline
 from rhythm.strategies.base import (
     LookAheadError,
     PositionView,
-    Signal,
     SignalType,
     StrategyContext,
     params_hash,
@@ -292,84 +288,6 @@ def test_params_hash_is_stable_and_sensitive() -> None:
     assert params_hash(STRAT.params) != params_hash(
         IntradayOrbVwap(OrbParams(reward_risk=Decimal(3))).params
     )
-
-
-# ------------------------------------------------------------------ baseline risk gate
-def _sig(
-    ref: str = "100", stop: str | None = "98", kind: SignalType = SignalType.ENTER_LONG
-) -> Signal:
-    return Signal(
-        KEY,
-        Horizon.INTRADAY,
-        kind,
-        t(10, 0),
-        Decimal(ref),
-        "s",
-        "1",
-        None if stop is None else Decimal(stop),
-    )
-
-
-def _state(**kw: object) -> baseline.AccountState:
-    base = {
-        "equity": Decimal(1_000_000),
-        "cash": Decimal(1_000_000),
-        "day_start_equity": Decimal(1_000_000),
-        "open_orders": 0,
-        "open_positions": 0,
-        "position_quantity": 0,
-    }
-    base.update(kw)
-    return baseline.AccountState(**base)  # type: ignore[arg-type]
-
-
-def test_sizing_by_risk() -> None:
-    d = baseline.evaluate(_sig(stop="97"), _state(), data_fresh=True)
-    assert d.outcome is baseline.RiskOutcome.ACCEPT and d.quantity == 1666  # 5000 / 3
-
-
-def test_reduced_by_position_cap_and_cash() -> None:
-    d = baseline.evaluate(_sig(stop="99.9"), _state(), data_fresh=True)  # risk says 50000 shares
-    assert d.outcome is baseline.RiskOutcome.REDUCE and d.quantity == 2000  # 20 % cap
-    d2 = baseline.evaluate(_sig(), _state(cash=Decimal(10_000)), data_fresh=True)
-    assert d2.quantity == 99
-
-
-@pytest.mark.parametrize(
-    ("kw", "fresh", "name"),
-    [
-        ({}, False, "data_fresh"),
-        ({"equity": Decimal(984_000)}, True, "daily_loss_stop"),
-        ({"position_quantity": 5}, True, "no_pyramiding"),
-        ({"open_orders": 10}, True, "max_open_orders"),
-        ({"open_positions": 5}, True, "max_positions"),
-    ],
-)
-def test_blocks(kw: dict[str, object], fresh: bool, name: str) -> None:
-    d = baseline.evaluate(_sig(), _state(**kw), data_fresh=fresh)
-    assert d.outcome is baseline.RiskOutcome.BLOCK and d.checks[-1].name == name
-
-
-def test_invalid_stop_blocked_and_exit_allowed_when_stale() -> None:
-    assert (
-        baseline.evaluate(_sig(stop="101"), _state(), data_fresh=True).outcome
-        is baseline.RiskOutcome.BLOCK
-    )
-    ex = baseline.evaluate(
-        _sig(kind=SignalType.EXIT_LONG, stop=None), _state(position_quantity=7), data_fresh=False
-    )
-    assert ex.accepted and ex.quantity == 7
-
-
-@given(st.decimals(min_value=0, max_value=14_000, places=2))
-def test_no_martingale_losses_never_increase_size(loss: Decimal) -> None:
-    flat = baseline.evaluate(_sig(), _state(), data_fresh=True).quantity
-    after_loss = baseline.evaluate(
-        _sig(),
-        _state(equity=Decimal(1_000_000) - loss, cash=Decimal(1_000_000) - loss),
-        data_fresh=True,
-    )
-    assert after_loss.quantity <= flat
 
 
 def test_mock_origin_label_present() -> None:

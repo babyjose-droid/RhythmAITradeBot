@@ -21,6 +21,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <nav>
             <Link href="/">Overview</Link>
             <Link href="/intraday">Intraday workspace</Link>
+            <Link href="/portfolio">Portfolio &amp; reconciliation</Link>
+            <Link href="/risk">Risk &amp; controls</Link>
             <Link href="/backtests">Backtests</Link>
           </nav>
         </header>

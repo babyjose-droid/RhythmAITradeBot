@@ -3,29 +3,33 @@
 Per completed bar, in this order (no look-ahead):
 1. resting orders try to fill against the new bar (decisions from earlier bars);
 2. the strategy evaluates using bars up to and including this bar;
-3. each signal goes through the risk gate; accepted signals become PAPER orders that can
-   only fill from the next bar;
-4. protective stop/target orders are kept in sync with the position (OCO);
-5. at the session's last bar any remaining position is squared off and orders expire.
+3. every signal becomes an ``OrderProposal`` and goes through the risk engine; accepted
+   proposals become PAPER orders that can only fill from the next bar;
+4. protective stop/target orders are kept in sync with the position (OCO) — they are
+   proposals too and pass the risk engine as risk-reducing orders;
+5. at the session's last bar any remaining position is squared off (simulated venue
+   auto square-off) and orders expire.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import date, datetime
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import EXCHANGE_TZ
-from rhythm.core.market import InstrumentKey
-from rhythm.execution.book import Fill, PaperBook
+from rhythm.core.market import Horizon, InstrumentKey
+from rhythm.execution.book import Fill, Order, PaperBook
 from rhythm.execution.costs import Side
 from rhythm.execution.fills import OrderType
 from rhythm.marketdata.types import Bar
-from rhythm.orders.state import OrderState
-from rhythm.risk import baseline
+from rhythm.orders.state import TERMINAL, OrderState
+from rhythm.risk import engine
+from rhythm.risk.engine import InstrumentFacts, Intent, OrderProposal, RiskDecision, RiskState
+from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
 from rhythm.strategies.base import (
     DecisionState,
     PositionView,
@@ -36,13 +40,40 @@ from rhythm.strategies.base import (
 )
 
 MAX_HISTORY = 400
+ADV_LOOKBACK_SESSIONS = 20
+PROTECTIVE = frozenset({"stop", "target", "square_off"})
+
+
+@dataclass
+class RiskEnvironment:
+    """Everything the runner cannot derive from its own book. Unknown -> fail closed."""
+
+    mode: str = "BACKTEST"
+    policy: RiskPolicy = DEFAULT_POLICY
+    kill_switch_active: bool = False
+    paused_strategies: frozenset[str] = frozenset()
+    reconciled_at: datetime | None = None
+    reconciliation_ok: bool = False
+    book_is_truth: bool = False  # backtests: the in-memory book is the only record
+    ledger_allocation: Decimal | None = None
+    other_ledger_exposure: dict[InstrumentKey, Decimal] = field(default_factory=dict)
+    instruments: dict[InstrumentKey, InstrumentFacts] = field(default_factory=dict)
+    adv: dict[InstrumentKey, tuple[Decimal, str]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RiskRecord:
+    proposal: OrderProposal
+    state: RiskState
+    decision: RiskDecision
+    order_id: str | None
 
 
 @dataclass(frozen=True)
 class SignalRecord:
     signal: Signal
     decision: DecisionState
-    risk: baseline.RiskDecision
+    risk: RiskDecision
     order_id: str | None
     diagnostics: dict[str, Any]
 
@@ -52,17 +83,26 @@ class IntradayRunner:
     strategy: Strategy
     book: PaperBook
     calendar: SessionCalendar
-    limits: baseline.BaselineRiskLimits = field(default_factory=baseline.BaselineRiskLimits)
-    lot_sizes: dict[InstrumentKey, int] = field(default_factory=dict)
+    env: RiskEnvironment = field(default_factory=RiskEnvironment)
     history: dict[InstrumentKey, list[Bar]] = field(default_factory=lambda: defaultdict(list))
     marks: dict[InstrumentKey, Decimal] = field(default_factory=dict)
     entries: dict[tuple[InstrumentKey, date], int] = field(default_factory=lambda: defaultdict(int))
     day_start_equity: dict[date, Decimal] = field(default_factory=dict)
+    day_volume: dict[tuple[InstrumentKey, date], int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    risk_log: list[RiskRecord] = field(default_factory=list)
+
+    @property
+    def horizon(self) -> Horizon:
+        return self.book.horizon
 
     def _day(self, bar: Bar) -> date:
         return bar.start.astimezone(EXCHANGE_TZ).date()
 
-    def on_bar(self, bar: Bar, *, data_fresh: bool = True) -> tuple[list[Fill], list[SignalRecord]]:
+    def on_bar(
+        self, bar: Bar, *, quote_status: str = "FRESH"
+    ) -> tuple[list[Fill], list[SignalRecord]]:
         key, day = bar.key, self._day(bar)
         dur = bar.interval.duration
         if dur is None:
@@ -79,6 +119,7 @@ class IntradayRunner:
         hist.append(bar)
         del hist[:-MAX_HISTORY]
         self.marks[key] = bar.close
+        self.day_volume[(key, day)] += bar.volume
 
         pos = self.book.position(key)
         view = (
@@ -91,7 +132,8 @@ class IntradayRunner:
         evaluation = self.strategy.evaluate(ctx)  # 2.
 
         records = [
-            self._handle(sig, evaluation.diagnostics, data_fresh) for sig in evaluation.signals
+            self._handle(sig, evaluation.diagnostics, quote_status, day)
+            for sig in evaluation.signals
         ]
         self._sync_protection(key, end)  # 4.
 
@@ -103,31 +145,134 @@ class IntradayRunner:
             self.book.expire_working(end, key)
         return fills, records
 
-    def _account_state(self, key: InstrumentKey, day: date) -> baseline.AccountState:
+    # ------------------------------------------------------------------ risk inputs
+    def _adv(self, key: InstrumentKey, day: date) -> tuple[Decimal | None, str]:
+        if key in self.env.adv:
+            return self.env.adv[key]
+        prior = sorted(
+            (d, v) for (k, d), v in self.day_volume.items() if k == key and d < day and v > 0
+        )[-ADV_LOOKBACK_SESSIONS:]
+        if prior:
+            avg = Decimal(sum(v for _, v in prior)) / len(prior)
+            return avg, f"mean of {len(prior)} prior session(s)"
+        today = [b for b in self.history.get(key, []) if self._day(b) == day]
+        if not today:
+            return None, "no volume data"
+        dur = today[0].interval.duration
+        if dur is None:
+            return None, "no volume data"
+        session = self.calendar.session_close(day) - self.calendar.session_open(day)
+        per_session = Decimal(int(session / dur))
+        est = Decimal(sum(b.volume for b in today)) / len(today) * per_session
+        return est, "estimated from today's bars"
+
+    def _open_risk_orders(self) -> list[Order]:
+        return [
+            o
+            for o in self.book.orders.values()
+            if o.state not in TERMINAL
+            and o.state is not OrderState.RECONCILED
+            and o.purpose not in PROTECTIVE
+        ]
+
+    def risk_state(self, p: OrderProposal) -> RiskState:
+        key, day = p.key, p.at.astimezone(EXCHANGE_TZ).date()
         equity = self.book.equity(self.marks)
-        return baseline.AccountState(
+        start = self.day_start_equity.get(day, equity)
+        mark = self.marks.get(key, p.ref_price)
+        open_risk = self._open_risk_orders()
+        reserved = sum(
+            (
+                o.remaining * (o.limit_price or self.marks.get(o.key, Decimal(0)))
+                for o in open_risk
+                if o.side is Side.BUY
+            ),
+            Decimal(0),
+        )
+        ledger_exposure = sum(
+            (
+                self.marks.get(k, pp.average_price) * pp.quantity
+                for k, pp in self.book.positions.items()
+            ),
+            Decimal(0),
+        )
+        pos = self.book.position(key)
+        adv, adv_source = self._adv(key, day)
+        env = self.env
+        recon_at = p.at if env.book_is_truth else env.reconciled_at
+        recon_ok = True if env.book_is_truth else env.reconciliation_ok
+        return RiskState(
+            as_of=p.at,
+            mode=env.mode,
+            kill_switch_active=env.kill_switch_active,
+            paused_strategies=env.paused_strategies,
+            reconciled_at=recon_at,
+            reconciliation_ok=recon_ok,
+            instrument=env.instruments.get(key),
+            quote_status=None,  # filled by caller
             equity=equity,
+            day_start_equity=start,
             cash=self.book.cash,
-            day_start_equity=self.day_start_equity.get(day, equity),
-            open_orders=self.book.open_order_count(),
-            open_positions=sum(1 for p in self.book.positions.values() if p.quantity > 0),
-            position_quantity=self.book.position(key).quantity,
+            reserved_cash=reserved,
+            strategy_day_pnl=equity - start,
+            ledger_allocation=env.ledger_allocation,
+            ledger_exposure=ledger_exposure,
+            ledger_position_qty=pos.quantity,
+            consolidated_exposure=mark * pos.quantity
+            + env.other_ledger_exposure.get(key, Decimal(0)),
+            sector_exposure=None,
+            avg_daily_volume=adv,
+            adv_source=adv_source,
+            open_orders_total=len(open_risk),
+            open_orders_strategy=sum(1 for o in open_risk if o.strategy == p.strategy),
+            orders_last_minute=sum(
+                1
+                for o in self.book.orders.values()
+                if p.at - timedelta(minutes=1) < o.created_at <= p.at
+            ),
+            duplicate_idempotency_key=p.idempotency_key in self.book._by_idem,
+            unknown_orders_on_instrument=sum(
+                1
+                for o in self.book.orders.values()
+                if o.key == key and o.state is OrderState.UNKNOWN
+            ),
         )
 
-    def _handle(self, sig: Signal, diag: dict[str, Any], fresh: bool) -> SignalRecord:
+    def assess(self, p: OrderProposal, quote_status: str | None) -> tuple[RiskState, RiskDecision]:
+        state = replace(self.risk_state(p), quote_status=quote_status)
+        decision = engine.evaluate(p, state, self.env.policy, costs=self.book.cost_model)
+        return state, decision
+
+    # ------------------------------------------------------------------ signals
+    def _handle(
+        self, sig: Signal, diag: dict[str, Any], quote_status: str, day: date
+    ) -> SignalRecord:
         key = sig.key
-        day = sig.at.astimezone(EXCHANGE_TZ).date()
-        decision = baseline.evaluate(
-            sig,
-            self._account_state(key, day),
-            data_fresh=fresh,
-            lot_size=self.lot_sizes.get(key, 1),
-            limits=self.limits,
-        )
-        if not decision.accepted:
-            return SignalRecord(sig, DecisionState.REJECTED_BY_RISK, decision, None, diag)
         idem = f"{sig.strategy}:{sig.version}:{key}:{sig.at.isoformat()}:{sig.type.value}"
-        if sig.type is SignalType.ENTER_LONG:
+        entry = sig.type is SignalType.ENTER_LONG
+        proposal = OrderProposal(
+            key=key,
+            horizon=sig.horizon,
+            side=Side.BUY if entry else Side.SELL,
+            intent=Intent.OPEN if entry else Intent.REDUCE,
+            at=sig.at,
+            ref_price=sig.ref_price,
+            strategy=sig.strategy,
+            idempotency_key=idem,
+            stop=sig.stop if entry else None,
+            quantity=None if entry else self.book.position(key).quantity,
+            purpose="entry" if entry else "exit",
+        )
+        state, decision = self.assess(proposal, quote_status)
+        if not decision.accepted:
+            self.risk_log.append(RiskRecord(proposal, state, decision, None))
+            dstate = (
+                DecisionState.REQUIRES_REVIEW
+                if decision.outcome is engine.RiskOutcome.REVIEW
+                else DecisionState.REJECTED_BY_RISK
+            )
+            return SignalRecord(sig, dstate, decision, None, diag)
+        if entry:
             order, created = self.book.propose(
                 key=key,
                 side=Side.BUY,
@@ -154,8 +299,9 @@ class IntradayRunner:
                 strategy=sig.strategy,
                 purpose="exit",
             )
+        self.risk_log.append(RiskRecord(proposal, state, decision, order.id))
         if created:
-            self.book.transition(order, OrderState.RISK_CHECKED, sig.at, **decision.as_dict())
+            self.book.transition(order, OrderState.RISK_CHECKED, sig.at, **_summary(decision))
             self.book.submit(order, sig.at)
         return SignalRecord(sig, sig.decision, decision, order.id, diag)
 
@@ -181,19 +327,49 @@ class IntradayRunner:
         if pos.target is not None:
             legs.append(("target", OrderType.LIMIT, pos.target, None))
         for purpose, otype, limit, stop in legs:
+            idem = f"{group}:{purpose}"
+            proposal = OrderProposal(
+                key=key,
+                horizon=self.horizon,
+                side=Side.SELL,
+                intent=Intent.REDUCE,
+                at=at,
+                ref_price=self.marks.get(key, pos.average_price),
+                strategy=self.strategy.name,
+                idempotency_key=idem,
+                stop=stop,
+                quantity=pos.quantity,
+                limit_price=limit,
+                purpose=purpose,
+            )
+            state, decision = self.assess(proposal, None)
+            if not decision.accepted:
+                self.risk_log.append(RiskRecord(proposal, state, decision, None))
+                continue
             order, created = self.book.propose(
                 key=key,
                 side=Side.SELL,
                 order_type=otype,
-                quantity=pos.quantity,
+                quantity=decision.quantity,
                 at=at,
-                idempotency_key=f"{group}:{purpose}",
+                idempotency_key=idem,
                 limit_price=limit,
                 stop_price=stop,
                 strategy=self.strategy.name,
                 purpose=purpose,
                 oco_group=group,
             )
+            self.risk_log.append(RiskRecord(proposal, state, decision, order.id))
             if created:
-                self.book.transition(order, OrderState.RISK_CHECKED, at, gate="risk-reducing exit")
+                self.book.transition(order, OrderState.RISK_CHECKED, at, **_summary(decision))
                 self.book.submit(order, at)
+
+
+def _summary(d: RiskDecision) -> dict[str, Any]:
+    return {
+        "outcome": d.outcome.value,
+        "quantity": d.quantity,
+        "policy_version": d.policy_version,
+        "failed": [c.code for c in d.failed],
+        "reduced_by": [c.code for c in d.checks if c.status.value == "REDUCE"],
+    }

@@ -25,7 +25,8 @@ from rhythm.marketdata.mock import MockMarketDataProvider
 from rhythm.marketdata.types import Interval
 from rhythm.strategies.base import DecisionState
 from rhythm.strategies.intraday_orb import IntradayOrbVwap
-from tests.conftest import make_settings
+from tests.conftest import auto_idempotency, make_settings
+from tests.phase3_helpers import sim_env
 
 pytestmark = pytest.mark.integration
 
@@ -39,7 +40,9 @@ def first_entry() -> tuple[InstrumentKey, datetime]:
     prov = MockMarketDataProvider(clock=FixedClock(DAY_END), calendar=CAL)
     for sym in MOCK_SYMBOLS:
         key = InstrumentKey(Exchange.NSE, sym)
-        runner = IntradayRunner(IntradayOrbVwap(), PaperBook(cash=Decimal(1_000_000)), CAL)
+        runner = IntradayRunner(
+            IntradayOrbVwap(), PaperBook(cash=Decimal(1_000_000)), CAL, env=sim_env(key)
+        )
         for b in prov.bars(key, Interval.M5, DAY_OPEN, DAY_END):
             for rec in runner.on_bar(b)[1]:
                 if rec.decision is DecisionState.BUY_CANDIDATE:
@@ -69,6 +72,7 @@ class Env:
             configure_logs=False,
         )
         self.c = TestClient(app)
+        auto_idempotency(self.c)
 
     def setup_watchlist(self) -> int:
         assert self.c.post("/v1/instruments/sync").status_code == 200

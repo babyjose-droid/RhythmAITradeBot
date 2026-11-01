@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { decisionBadge, freshnessTone, orderBadge, type BadgeSpec } from "@/lib/status";
+import { checkTone, decisionBadge, freshnessTone, orderBadge, riskOutcomeTone, type BadgeSpec } from "@/lib/status";
 
 export function Badge({ spec }: { spec: BadgeSpec }) {
   return (
@@ -18,6 +18,11 @@ export const DecisionBadge = ({ decision }: { decision: string }) => <Badge spec
 export function FreshnessPill({ status }: { status: string }) {
   const tone = freshnessTone(status);
   return <span className={`pill pill-${tone}`}>{tone === "stale" ? `⚠ ${status}` : status}</span>;
+}
+
+export function Tone({ value, kind = "check" }: { value: string; kind?: "check" | "outcome" }) {
+  const tone = kind === "outcome" ? riskOutcomeTone(value) : checkTone(value);
+  return <span className={`tone tone-${tone}`} data-tone={tone}>{value}</span>;
 }
 
 export function MockTag({ show }: { show: boolean }) {

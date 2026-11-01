@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Iterator
 from typing import Any
 
@@ -28,3 +29,13 @@ def make_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {"database_url": UNREACHABLE_DB_URL, "environment": "test"}
     values.update(overrides)
     return Settings(_env_file=None, **values)
+
+
+def auto_idempotency(client: Any) -> None:
+    """Give every POST/PUT a fresh Idempotency-Key unless the test sets one itself."""
+
+    def hook(request: Any) -> None:
+        if request.method in ("POST", "PUT") and "idempotency-key" not in request.headers:
+            request.headers["Idempotency-Key"] = f"test-{uuid.uuid4().hex}"
+
+    client.event_hooks = {"request": [hook], "response": []}

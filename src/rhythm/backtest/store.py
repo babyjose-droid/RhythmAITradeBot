@@ -37,7 +37,7 @@ def save_run(
         initial_capital=cfg.initial_capital,
         cost_model=cfg.cost_model.describe(),
         fill_model=cfg.fill_model.describe(),
-        limits=cfg.limits.describe(),
+        limits=cfg.describe_risk(),
         data_hash=full.data_hash,
         run_hash=full.run_hash,
         data_is_mock=full.data_is_mock,

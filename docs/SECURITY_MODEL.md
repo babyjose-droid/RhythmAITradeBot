@@ -1,6 +1,11 @@
 # Security Model & Threat Model
 
-**Status:** Phase 0 design; Phase 1 implemented redaction, audit chain, LIVE refusal and loopback-only binding.
+**Status:** Phase 0 design.
+- **Phase 1** implemented redaction, the audit chain, LIVE refusal and loopback-only binding.
+- **Phase 4** added:
+  - `Idempotency-Key` on mutating endpoints (replay-safe, body-bound);
+  - append-only `risk_checks`, `control_events` and `reconciliations`;
+  - "system can only fail safe" controls (automatic triggers activate or pause; only a user can release or resume).
 
 ## 1. Assets
 

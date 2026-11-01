@@ -31,6 +31,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from rhythm.db.base import Base, TimestampMixin
 
 MONEY = Numeric(20, 4)
+HORIZON_CHECK = "horizon IN ('INTRADAY', 'SWING', 'LONG_TERM')"
 
 
 class PaperAccount(TimestampMixin, Base):
@@ -44,6 +45,24 @@ class PaperAccount(TimestampMixin, Base):
     state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class Ledger(TimestampMixin, Base):
+    """A virtual per-horizon ledger inside a PAPER account (MULTI_HORIZON_PORTFOLIO.md §1)."""
+
+    __tablename__ = "ledgers"
+    __table_args__ = (
+        CheckConstraint("account_kind = 'PAPER'", name="paper_only"),
+        CheckConstraint(HORIZON_CHECK, name="horizon"),
+        CheckConstraint("allocated_capital >= 0", name="allocation"),
+        UniqueConstraint("account_id", "horizon", name="uq_ledgers_account_horizon"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    account_kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id"), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(16), nullable=False)
+    allocated_capital: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+
+
 class OrderRow(Base):
     __tablename__ = "orders"
     __table_args__ = (
@@ -51,12 +70,14 @@ class OrderRow(Base):
         CheckConstraint("quantity > 0 AND filled_quantity >= 0", name="qty"),
         CheckConstraint("filled_quantity <= quantity", name="fill_le_qty"),
         CheckConstraint("side IN ('BUY', 'SELL')", name="side"),
+        CheckConstraint(HORIZON_CHECK, name="horizon"),
         Index("ix_orders_account_state", "account_id", "state"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     account_kind: Mapped[str] = mapped_column(String(8), nullable=False)
     account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id"), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(16), nullable=False, server_default="INTRADAY")
     idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     exchange: Mapped[str] = mapped_column(String(8), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -73,6 +94,7 @@ class OrderRow(Base):
     oco_group: Mapped[str | None] = mapped_column(String(120))
     strategy: Mapped[str | None] = mapped_column(String(64))
     reason: Mapped[str | None] = mapped_column(String(200))
+    venue_order_id: Mapped[str | None] = mapped_column(String(40))
     data_is_mock: Mapped[bool] = mapped_column(Boolean, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -94,11 +116,13 @@ class FillRow(Base):
     __table_args__ = (
         CheckConstraint("account_kind = 'PAPER'", name="paper_only"),
         CheckConstraint("quantity > 0 AND price > 0", name="positive"),
+        CheckConstraint(HORIZON_CHECK, name="horizon"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     account_kind: Mapped[str] = mapped_column(String(8), nullable=False)
     account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id"), nullable=False)
+    horizon: Mapped[str] = mapped_column(String(16), nullable=False, server_default="INTRADAY")
     order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
     exchange: Mapped[str] = mapped_column(String(8), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -112,8 +136,13 @@ class FillRow(Base):
 
 class PaperPosition(Base):
     __tablename__ = "paper_positions"
+    __table_args__ = (
+        CheckConstraint(HORIZON_CHECK, name="horizon"),
+        CheckConstraint("quantity >= 0", name="long_only"),
+    )
 
     account_id: Mapped[int] = mapped_column(ForeignKey("paper_accounts.id"), primary_key=True)
+    horizon: Mapped[str] = mapped_column(String(16), primary_key=True)
     exchange: Mapped[str] = mapped_column(String(8), primary_key=True)
     symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)

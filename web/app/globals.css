@@ -68,3 +68,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .tag-paper { background: var(--paper); color: #fff; }
 .tag-mock { background: #ffe9a8; color: #6b4b00; border: 1px solid #d4a400; }
 .tag-warn { background: #fde8e7; color: var(--bad); }
+.banner-kill { background: var(--bad); font-weight: 700; }
+.tone { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.tone-ok { background: #e5f4ea; color: var(--ok); border: 1px solid var(--ok); }
+.tone-reduce { background: #fff3dc; color: #7a4a00; border: 1px dashed var(--warn); }
+.tone-fail { background: var(--bad); color: #fff; border: 1px solid var(--bad); }
+.tone-skip { background: transparent; color: var(--muted); border: 1px dotted var(--muted); }
+details summary { cursor: pointer; }
+.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+textarea { font: inherit; width: 100%; min-height: 48px; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }

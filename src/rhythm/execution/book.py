@@ -14,9 +14,15 @@ from decimal import Decimal
 from typing import Any
 
 from rhythm.core.errors import RhythmError
-from rhythm.core.market import InstrumentKey
+from rhythm.core.market import Horizon, InstrumentKey
 from rhythm.execution.costs import Charges, CostModel, Product, Side
 from rhythm.execution.fills import FillModel, OrderType
+from rhythm.execution.gateway import (
+    OrderVenue,
+    PaperVenue,
+    SubmissionTimeoutError,
+    VenueRejectedError,
+)
 from rhythm.marketdata.types import Bar
 from rhythm.orders.state import TERMINAL, WORKING, OrderState, check_transition
 
@@ -47,6 +53,7 @@ class Order:
     oco_group: str | None = None
     reason: str | None = None
     updated_at: datetime | None = None
+    venue_order_id: str | None = None
 
     @property
     def remaining(self) -> int:
@@ -97,6 +104,8 @@ class PaperBook:
     fills: list[Fill] = field(default_factory=list)
     events: list[OrderEvent] = field(default_factory=list)
     id_factory: Callable[[str], str] | None = None
+    venue: OrderVenue = field(default_factory=PaperVenue)
+    horizon: Horizon = Horizon.INTRADAY
     _seq: Iterator[int] = field(default_factory=lambda: itertools.count(1))
     _by_idem: dict[str, str] = field(default_factory=dict)
 
@@ -172,9 +181,70 @@ class PaperBook:
         return order, True
 
     def submit(self, order: Order, at: datetime) -> None:
-        """RISK_CHECKED -> SUBMITTED -> BROKER_ACKNOWLEDGED (simulated paper venue)."""
-        self.transition(order, OrderState.SUBMITTED, at, venue="PAPER")
-        self.transition(order, OrderState.BROKER_ACKNOWLEDGED, at, venue="PAPER")
+        """RISK_CHECKED -> SUBMITTED -> BROKER_ACKNOWLEDGED | UNKNOWN | BROKER_REJECTED.
+
+        A timeout leaves the order UNKNOWN. It is never re-sent automatically; see
+        ``resolve_unknown``.
+        """
+        name = self.venue.name
+        self.transition(order, OrderState.SUBMITTED, at, venue=name)
+        try:
+            vid = self.venue.submit(order, at)
+        except SubmissionTimeoutError as exc:
+            order.reason = "submission timed out; venue state unknown"
+            self.transition(order, OrderState.UNKNOWN, at, venue=name, error=str(exc))
+            return
+        except VenueRejectedError as exc:
+            order.reason = str(exc)[:200]
+            self.transition(order, OrderState.BROKER_REJECTED, at, venue=name, error=str(exc))
+            return
+        order.venue_order_id = vid
+        self.transition(order, OrderState.BROKER_ACKNOWLEDGED, at, venue=name, venue_order_id=vid)
+
+    def resolve_unknown(
+        self, at: datetime, *, match_window_seconds: int = 120, give_up_after_seconds: int = 300
+    ) -> dict[str, str]:
+        """Match UNKNOWN orders against the venue's day order book. Returns id -> outcome.
+
+        Exactly one unclaimed venue order with the same instrument, side and quantity, placed
+        within the window -> BROKER_ACKNOWLEDGED. None found after ``give_up_after_seconds``
+        -> CANCELLED (treated as never placed). Several candidates -> stays UNKNOWN (ambiguous,
+        needs a human).
+        """
+        unknown = [o for o in self.orders.values() if o.state is OrderState.UNKNOWN]
+        if not unknown:
+            return {}
+        claimed = {o.venue_order_id for o in self.orders.values() if o.venue_order_id}
+        venue_orders = self.venue.day_orders()
+        out: dict[str, str] = {}
+        for o in sorted(unknown, key=lambda x: (x.created_at, x.id)):
+            matches = [
+                v
+                for v in venue_orders
+                if v.venue_order_id not in claimed
+                and v.key == o.key
+                and v.side is o.side
+                and v.quantity == o.quantity
+                and abs((v.at - o.created_at).total_seconds()) <= match_window_seconds
+            ]
+            if len(matches) == 1:
+                vid = matches[0].venue_order_id
+                o.venue_order_id = vid
+                claimed.add(vid)
+                o.reason = None
+                self.transition(
+                    o, OrderState.BROKER_ACKNOWLEDGED, at, venue_order_id=vid, resolved="matched"
+                )
+                out[o.id] = "ACKNOWLEDGED"
+            elif len(matches) > 1:
+                out[o.id] = "AMBIGUOUS"
+            elif (at - o.created_at).total_seconds() >= give_up_after_seconds:
+                o.reason = "not found at venue; treated as never placed"
+                self.transition(o, OrderState.CANCELLED, at, resolved="not found at venue")
+                out[o.id] = "NOT_FOUND"
+            else:
+                out[o.id] = "PENDING"
+        return out
 
     def cancel(self, order: Order, at: datetime, reason: str) -> None:
         if order.state in TERMINAL:
@@ -278,8 +348,11 @@ class PaperBook:
             idempotency_key=f"square_off:{key}:{at.isoformat()}",
             purpose="square_off",
         )
-        self.transition(order, OrderState.RISK_CHECKED, at, gate="risk-reducing exit")
-        self.submit(order, at)
+        self.transition(
+            order, OrderState.RISK_CHECKED, at, gate="venue auto square-off (simulated)"
+        )
+        self.transition(order, OrderState.SUBMITTED, at, venue="PAPER")
+        self.transition(order, OrderState.BROKER_ACKNOWLEDGED, at, venue="PAPER")
         return self.apply_fill(order, pos.quantity, price, at)
 
     # ------------------------------------------------------------------ valuation

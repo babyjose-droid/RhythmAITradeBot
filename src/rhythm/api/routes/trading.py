@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from rhythm.api.deps import SessionDep, StateDep, parse_key
+from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.audit import ActorType
 from rhythm.backtest.engine import (
     BacktestConfig,
@@ -44,6 +45,7 @@ from rhythm.marketdata.provider import MarketDataUnavailableError
 from rhythm.marketdata.types import Bar, Interval
 from rhythm.orders.state import OrderState, display_category
 from rhythm.paper import service as paper
+from rhythm.portfolio import service as portfolio
 from rhythm.strategies.base import params_hash
 from rhythm.strategies.intraday_orb import STRATEGIES, IntradayOrbVwap
 
@@ -308,6 +310,10 @@ def account_detail(account_id: int, session: SessionDep, response: Response) -> 
             for p in positions
         ],
         "state": a.state,
+        "ledgers": {
+            lg.horizon: str(lg.allocated_capital)
+            for lg in portfolio.ledgers(session, account_id).values()
+        },
     }
 
 
@@ -319,6 +325,8 @@ def _order_out(o: OrderRow) -> dict[str, Any]:
         "side": o.side,
         "order_type": o.order_type,
         "purpose": o.purpose,
+        "horizon": o.horizon,
+        "venue_order_id": o.venue_order_id,
         "quantity": o.quantity,
         "filled_quantity": o.filled_quantity,
         "average_fill_price": None if o.average_fill_price is None else str(o.average_fill_price),
@@ -361,36 +369,52 @@ def order_events(order_id: str, session: SessionDep, response: Response) -> list
 
 @router.post("/v1/paper/orders/{order_id}/cancel")
 def cancel_order(
-    order_id: str, state: StateDep, session: SessionDep, response: Response
-) -> dict[str, Any]:
+    order_id: str,
+    state: StateDep,
+    session: SessionDep,
+    response: Response,
+    idem: IdempotencyKey = None,
+) -> Any:
     _paper(response)
-    o = session.get(OrderRow, order_id, with_for_update=True)
-    if o is None:
-        raise HTTPException(404, f"order {order_id} not found")
-    if OrderState(o.state) not in (OrderState.BROKER_ACKNOWLEDGED, OrderState.PARTIALLY_FILLED):
-        raise HTTPException(409, f"order in state {o.state} cannot be cancelled")
-    now = state.clock.now()
-    session.add(
-        OrderEventRow(
-            order_id=o.id,
-            from_state=o.state,
-            to_state="CANCELLED",
-            at=now,
-            detail={"reason": "user cancel"},
+
+    def produce() -> dict[str, Any]:
+        o = session.get(OrderRow, order_id, with_for_update=True)
+        if o is None:
+            raise HTTPException(404, f"order {order_id} not found")
+        if OrderState(o.state) not in (OrderState.BROKER_ACKNOWLEDGED, OrderState.PARTIALLY_FILLED):
+            raise HTTPException(409, f"order in state {o.state} cannot be cancelled")
+        now = state.clock.now()
+        session.add(
+            OrderEventRow(
+                order_id=o.id,
+                from_state=o.state,
+                to_state="CANCELLED",
+                at=now,
+                detail={"reason": "user cancel"},
+            )
         )
-    )
-    o.state, o.reason, o.updated_at = "CANCELLED", "user cancel", now
-    state.audit.append(
+        o.state, o.reason, o.updated_at = "CANCELLED", "user cancel", now
+        state.audit.append(
+            session,
+            event_type="paper.order_cancelled",
+            actor_type=ActorType.USER,
+            actor_id=state.settings.local_actor_id,
+            subject_type="order",
+            subject_id=o.id,
+            payload={"account_kind": ACCOUNT_KIND},
+        )
+        session.flush()
+        return _order_out(o)
+
+    return run_idempotent(
         session,
-        event_type="paper.order_cancelled",
-        actor_type=ActorType.USER,
-        actor_id=state.settings.local_actor_id,
-        subject_type="order",
-        subject_id=o.id,
-        payload={"account_kind": ACCOUNT_KIND},
+        key=idem,
+        endpoint=f"POST /v1/paper/orders/{order_id}/cancel",
+        body={},
+        produce=produce,
+        required=True,
+        headers={"x-account-kind": ACCOUNT_KIND},
     )
-    session.flush()
-    return _order_out(o)
 
 
 @router.get("/v1/paper/accounts/{account_id}/fills")
@@ -453,10 +477,24 @@ def _cycle(
 
 @router.post("/v1/paper/accounts/{account_id}/cycle")
 def paper_cycle(
-    account_id: int, body: CycleIn, state: StateDep, session: SessionDep, response: Response
-) -> dict[str, Any]:
+    account_id: int,
+    body: CycleIn,
+    state: StateDep,
+    session: SessionDep,
+    response: Response,
+    idem: IdempotencyKey = None,
+) -> Any:
+    """Run one PAPER cycle. Requires an Idempotency-Key: a retried request is not re-run."""
     _paper(response)
-    return _cycle(body, state, session, account_id)
+    return run_idempotent(
+        session,
+        key=idem,
+        endpoint=f"POST /v1/paper/accounts/{account_id}/cycle",
+        body=body.model_dump(),
+        produce=lambda: _cycle(body, state, session, account_id),
+        required=True,
+        headers={"x-account-kind": ACCOUNT_KIND},
+    )
 
 
 @router.post("/v1/research/cycle")

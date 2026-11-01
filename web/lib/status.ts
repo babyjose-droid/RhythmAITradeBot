@@ -80,3 +80,19 @@ export function freshnessTone(status: string): FreshnessTone {
   if (status === "SESSION_CLOSED") return "closed";
   return "stale"; // STALE, MISSING, INVALID, ERROR and anything unexpected: fail closed
 }
+
+export type CheckTone = "ok" | "reduce" | "fail" | "skip";
+
+/** Risk-check status -> tone. Anything unexpected is shown as a failure (fail closed). */
+export function checkTone(status: string): CheckTone {
+  if (status === "PASS") return "ok";
+  if (status === "REDUCE") return "reduce";
+  if (status === "SKIP") return "skip";
+  return "fail";
+}
+
+export function riskOutcomeTone(outcome: string): CheckTone {
+  if (outcome === "ACCEPT") return "ok";
+  if (outcome === "REDUCE") return "reduce";
+  return "fail"; // BLOCK, REVIEW and anything unexpected
+}

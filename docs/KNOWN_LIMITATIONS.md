@@ -20,8 +20,12 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 4:** no sector, correlation or event-calendar source. R11 and R19 are skipped (reason recorded), and R18 blocks swing/long-term entries until Phase 5.
+- **Phase 4:** the circuit-band check (R6) runs only when the data source supplies the band; MOCK quotes do not.
+- **Phase 4:** ADV for R12 comes from stored daily bars when present. Otherwise it is the mean of earlier sessions in the run or an estimate from today's bars (the source is recorded with the decision).
+- **Phase 4:** for PAPER, UNKNOWN resolution matches against an in-memory venue order book. Timeouts are simulated only in tests.
+- **Phase 4:** controls are global (one kill switch for all PAPER accounts). "User" actions are attributed to `local-owner` until authentication arrives (Phase 8).
 - **Phase 3:** the cost model is **illustrative and unverified** (placeholder brokerage rates, and statutory rates not checked against a current contract note). Every backtest and paper result carries `verified=false`.
-- **Phase 3:** the risk gate is the interim `baseline-0.1`; the full risk engine, kill switch and reconciliation arrive in Phase 4.
 - **Phase 3:** long-only intraday; no short selling. Fill simulation has no queue position, latency or exchange rejections. The bar-based fill model cannot see moves inside a bar.
 - **Phase 3:** backtest and paper results so far use MOCK random-walk data. They validate the pipeline, not the strategy.
 - **Phase 3:** the dashboard has no authentication (loopback only). Its API address (`RHYTHM_API_URL`) is fixed when the image is built.

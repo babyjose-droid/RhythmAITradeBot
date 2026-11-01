@@ -1,6 +1,30 @@
 # Test Plan
 
-**Status:** Phase 3: 193 Python tests (unit, plus integration on real PostgreSQL) and 4 web tests, all passing on 2026-10-31. Exact output is in the PHASE_1/2/3 reports.
+**Status:** Phase 4: 286 Python tests (unit + integration on real PostgreSQL) and 5 web tests, all passing on 2026-10-31. Exact output is in the PHASE_1–4 reports.
+
+## Phase 4 coverage
+
+- **Risk engine:** every rule's FAIL path (35 cases), boundaries, the REDUCE path for each cap, lot rounding, and the review threshold.
+- **Exits:** allowed under the kill switch, pauses, stale data and the daily loss stop; capped at the ledger's holding.
+- **Fail-closed:** missing inputs, plus injected exceptions in a gating check and in a sizing check.
+- **Hypothesis properties:** size never exceeds any cap; no martingale.
+- **Policy:** bounds and round-trip.
+- **UNKNOWN orders:** timeout after/before accept, ambiguous match, rejection, and R16 blocking.
+- **Runner:** gating by kill switch, pause, missing facts and a stale quote.
+- **Reconciliation:** OK, every break kind, negative journal position, consolidation and the venue invariant.
+- **Integration:**
+  - ledger creation and allocation audit;
+  - idempotency required / replay / conflict;
+  - decision persistence and append-only triggers;
+  - policy versioning used by the next cycle;
+  - kill switch cancel / block / release with reason;
+  - pause / resume;
+  - daily loss auto-pause;
+  - reconciliation break tripping the kill switch;
+  - consolidated view;
+  - UNKNOWN end to end without a re-send.
+- **Web:** risk outcome and check tones fail closed.
+- **Manual:** a Playwright smoke test of the new screens.
 
 ## Phase 3 coverage
 

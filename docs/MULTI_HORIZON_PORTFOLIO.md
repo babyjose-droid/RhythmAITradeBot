@@ -1,6 +1,17 @@
 # Multi-Horizon Portfolio Orchestration
 
-**Status:** Phase 0 design.
+**Status:** Ledgers, consolidated view and PAPER reconciliation implemented in Phase 4.
+
+**Ledgers.** The `ledgers` table holds a per-account allocation per horizon. Orders, fills and positions carry `horizon`.
+
+**Invariants.**
+- **Invariant 1:** `reconcile_with_venue`, tested with mock data. For PAPER, the fill journal is the truth.
+- **Invariant 3:** enforced by risk check R20.
+- **Invariant 4:** enforced by the PAPER-only DB checks.
+
+**Cash and funds.** Cash is shared at account level, and R13 checks available funds net of open BUY reservations.
+
+**Still to build.** Orchestration netting across horizons (§3 step 2) arrives with the swing ledger in Phase 5.
 
 ## 1. Model
 

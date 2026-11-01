@@ -128,6 +128,18 @@ type = "forbidden"
 source_modules = ["rhythm.backtest"]
 forbidden_modules = ["rhythm.api", "rhythm.broker", "rhythm.paper"]
 
+[[tool.importlinter.contracts]]
+name = "Reconciliation logic is pure"
+type = "forbidden"
+source_modules = ["rhythm.portfolio.reconcile"]
+forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.broker", "rhythm.audit", "rhythm.paper"]
+
+[[tool.importlinter.contracts]]
+name = "Controls, portfolio and paper services never reach a broker or the API"
+type = "forbidden"
+source_modules = ["rhythm.controls", "rhythm.portfolio", "rhythm.paper"]
+forbidden_modules = ["rhythm.api", "rhythm.broker"]
+
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small
 # untyped helpers; strictness is kept for src/.

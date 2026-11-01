@@ -1,6 +1,6 @@
 # Internal API Specification (initial)
 
-**Status:** Phases 1–3 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals — exact lists in PHASE_2_REPORT.md and PHASE_3_REPORT.md; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
+**Status:** Phases 1–4 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
 
 | Method | Path | Phase | Notes |
 |---|---|---|---|
@@ -15,14 +15,25 @@
 | GET | `/v1/paper/orders/{id}/events` · POST `/v1/paper/orders/{id}/cancel` | 3 ✅ | append-only event history |
 | POST | `/v1/research/cycle` | 3 ✅ | evaluates strategy, records candidates, creates **no** orders |
 | GET | `/v1/signals` | 3 ✅ | candidates (`kind: CANDIDATE`) — never orders; linked `order_id` if one was created |
-| GET/PUT | `/v1/risk/policies` | 4 | PUT requires owner + reason; creates new version |
-| POST | `/v1/risk/kill-switch` (activate/release) | 4 | audited |
-| POST | `/v1/strategies/{id}/pause` / `resume` | 4 | |
-| GET | `/v1/portfolio/consolidated`, `/v1/portfolio/ledgers/{horizon}` | 4 | |
-| GET | `/v1/reconciliations` | 4 | |
+| GET/POST | `/v1/risk/policies` | 4 ✅ | POST creates a new version (reason required, hard bounds, audited); never edits old ones |
+| GET | `/v1/risk/controls` | 4 ✅ | kill switch, paused strategies, history |
+| POST | `/v1/risk/kill-switch` (activate/release) | 4 ✅ | reason required; activation cancels entry orders, optional `flatten_intraday`; audited |
+| POST | `/v1/strategies/{name}/pause` / `resume` | 4 ✅ | reason required; audited |
+| GET | `/v1/risk/checks?account_id=&outcome=&order_id=` | 4 ✅ | every engine decision with all check results and inputs |
+| GET | `/v1/portfolio/ledgers?account_id=`, `/v1/portfolio/consolidated?account_id=` | 4 ✅ | per-ledger summary; consolidated per instrument with ledger breakdown |
+| PUT | `/v1/paper/accounts/{id}/ledgers/{horizon}` | 4 ✅ | allocation change; reason required; total ≤ starting capital |
+| POST | `/v1/paper/accounts/{id}/reconcile` · GET `/v1/reconciliations?account_id=` | 4 ✅ | a break activates the kill switch |
 | POST | `/v1/approvals/{order_id}` | 4/8 | approve/reject with reason |
 | GET | `/v1/research/assessments/{id}` | 7 | packet, sources, output, validation result |
 | GET | `/v1/broker/login-url` · GET `/v1/broker/callback` | 2 (read-only verification, after approval) | state validation; server-side token exchange |
 | GET | `/v1/audit/events` | 1+ | |
 
-Conventions: JSON, ISO-8601 UTC timestamps plus `exchange_local` where relevant, Decimal as strings, idempotency key header on all POSTs, problem+json errors. No endpoint submits a live order before Phase 10.
+Conventions: JSON; ISO-8601 UTC timestamps plus `exchange_local` where relevant; Decimals as strings.
+
+**`Idempotency-Key` header** (8–128 chars):
+- **Required** on PAPER cycle, order cancel, kill switch, pause/resume, policy and allocation changes; missing → 428.
+- Optional elsewhere.
+- A same-key retry replays the stored response (`idempotent-replay: true`).
+- Same key with a different body → 409.
+
+Errors use problem+json errors. No endpoint submits a live order before Phase 10.

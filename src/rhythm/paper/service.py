@@ -7,14 +7,19 @@ quote is FRESH; catch-up bars may fill or exit but never open positions (fail cl
 
 PAPER cycles require ``trading_mode=PAPER`` and ``features.paper_trading``. Otherwise only a
 research cycle is possible: candidates are recorded, no order is created.
+
+Phase 4: each cycle reconciles the account against its fill journal before and after trading,
+resolves UNKNOWN orders against the venue, applies the kill switch / strategy pauses and the
+active risk policy, persists every risk decision, and auto-pauses a strategy that hits its
+daily loss stop. A reconciliation break activates the kill switch.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -23,10 +28,11 @@ from sqlalchemy.orm import Session
 
 from rhythm.audit import ActorType, AuditLog
 from rhythm.config import Settings, TradingMode
+from rhythm.controls import service as controls
 from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import EXCHANGE_TZ, Clock
 from rhythm.core.errors import RhythmError
-from rhythm.core.market import DataOrigin, Exchange, InstrumentKey
+from rhythm.core.market import DataOrigin, Exchange, Horizon, InstrumentKey
 from rhythm.db.models import (
     FillRow,
     OrderEventRow,
@@ -38,13 +44,19 @@ from rhythm.db.models import (
 from rhythm.execution.book import ACCOUNT_KIND, Order, PaperBook, Position
 from rhythm.execution.costs import CostModel, Product, Side
 from rhythm.execution.fills import FillModel, OrderType
-from rhythm.execution.runner import IntradayRunner, SignalRecord
+from rhythm.execution.gateway import OrderVenue, PaperVenue
+from rhythm.execution.runner import IntradayRunner, RiskEnvironment, SignalRecord
 from rhythm.instruments.registry import get_active
+from rhythm.marketdata.bars import get_bars
 from rhythm.marketdata.freshness import FreshnessPolicy, FreshnessStatus, evaluate_quote
 from rhythm.marketdata.provider import MarketDataProvider, MarketDataUnavailableError
 from rhythm.marketdata.types import Interval
 from rhythm.orders.state import TERMINAL, OrderState
+from rhythm.portfolio import service as portfolio
+from rhythm.risk.engine import InstrumentFacts, Intent, OrderProposal
+from rhythm.risk.policy import RiskPolicy
 from rhythm.strategies.base import Strategy, params_hash
+from rhythm.strategies.intraday_orb import IntradayOrbVwap
 
 
 class PaperTradingDisabledError(RhythmError):
@@ -76,17 +88,28 @@ class CycleResult:
     cash: str | None = None
     equity: str | None = None
     data_is_mock: bool = False
+    controls: dict[str, Any] = field(default_factory=dict)
+    unknown_resolution: dict[str, str] = field(default_factory=dict)
+    risk_decisions: int = 0
+    auto_paused: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------- accounts
 def create_account(
-    session: Session, audit: AuditLog, *, name: str, starting_cash: Decimal, actor_id: str
+    session: Session,
+    audit: AuditLog,
+    *,
+    name: str,
+    starting_cash: Decimal,
+    actor_id: str,
+    policy: RiskPolicy | None = None,
 ) -> PaperAccount:
     if starting_cash <= 0:
         raise ValueError("starting cash must be positive")
     acct = PaperAccount(name=name, starting_cash=starting_cash, cash=starting_cash, state={})
     session.add(acct)
     session.flush()
+    alloc = portfolio.create_ledgers(session, acct, policy or RiskPolicy())
     audit.append(
         session,
         event_type="paper.account_created",
@@ -94,7 +117,12 @@ def create_account(
         actor_id=actor_id,
         subject_type="paper_account",
         subject_id=str(acct.id),
-        payload={"name": name, "starting_cash": str(starting_cash), "account_kind": ACCOUNT_KIND},
+        payload={
+            "name": name,
+            "starting_cash": str(starting_cash),
+            "account_kind": ACCOUNT_KIND,
+            "ledgers": {lg.horizon: str(lg.allocated_capital) for lg in alloc},
+        },
     )
     return acct
 
@@ -121,15 +149,22 @@ def load_book(
     since: datetime,
     cost_model: CostModel | None = None,
     fill_model: FillModel | None = None,
+    horizon: Horizon = Horizon.INTRADAY,
+    venue: OrderVenue | None = None,
 ) -> PaperBook:
+    """Load one ledger's book. Cash is the account's shared cash."""
     book = PaperBook(
         cash=acct.cash,
         cost_model=cost_model or CostModel(),
         fill_model=fill_model or FillModel(),
         id_factory=_uuid_ids,
+        venue=venue or PaperVenue(),
+        horizon=horizon,
     )
     for p in session.execute(
-        select(PaperPosition).where(PaperPosition.account_id == acct.id)
+        select(PaperPosition).where(
+            PaperPosition.account_id == acct.id, PaperPosition.horizon == horizon.value
+        )
     ).scalars():
         book.positions[_key(p.exchange, p.symbol)] = Position(
             key=_key(p.exchange, p.symbol),
@@ -147,6 +182,7 @@ def load_book(
     rows = session.execute(
         select(OrderRow).where(
             OrderRow.account_id == acct.id,
+            OrderRow.horizon == horizon.value,
             or_(OrderRow.state.in_(open_states), OrderRow.created_at >= since),
         )
     ).scalars()
@@ -170,6 +206,7 @@ def load_book(
             oco_group=r.oco_group,
             reason=r.reason,
             updated_at=r.updated_at,
+            venue_order_id=r.venue_order_id,
         )
         book.orders[o.id] = o
         book._by_idem[o.idempotency_key] = o.id
@@ -183,6 +220,7 @@ def save_book(session: Session, acct: PaperAccount, book: PaperBook, *, data_is_
                 id=o.id,
                 account_kind=ACCOUNT_KIND,
                 account_id=acct.id,
+                horizon=book.horizon.value,
                 idempotency_key=o.idempotency_key,
                 exchange=o.key.exchange.value,
                 symbol=o.key.symbol,
@@ -199,6 +237,7 @@ def save_book(session: Session, acct: PaperAccount, book: PaperBook, *, data_is_
                 oco_group=o.oco_group,
                 strategy=o.strategy,
                 reason=o.reason,
+                venue_order_id=o.venue_order_id,
                 data_is_mock=data_is_mock,
                 created_at=o.created_at,
                 updated_at=o.updated_at or o.created_at,
@@ -211,6 +250,7 @@ def save_book(session: Session, acct: PaperAccount, book: PaperBook, *, data_is_
                 id=f.id,
                 account_kind=ACCOUNT_KIND,
                 account_id=acct.id,
+                horizon=book.horizon.value,
                 order_id=f.order_id,
                 exchange=f.key.exchange.value,
                 symbol=f.key.symbol,
@@ -239,6 +279,7 @@ def save_book(session: Session, acct: PaperAccount, book: PaperBook, *, data_is_
         session.merge(
             PaperPosition(
                 account_id=acct.id,
+                horizon=book.horizon.value,
                 exchange=k.exchange.value,
                 symbol=k.symbol,
                 quantity=p.quantity,
@@ -252,6 +293,69 @@ def save_book(session: Session, acct: PaperAccount, book: PaperBook, *, data_is_
         )
     acct.cash = book.cash
     session.flush()
+
+
+# ---------------------------------------------------------------------------- risk inputs
+def instrument_facts(session: Session, key: InstrumentKey) -> InstrumentFacts | None:
+    inst = get_active(session, key)
+    if inst is None:
+        return None
+    return InstrumentFacts(
+        active=True,
+        instrument_type=inst.instrument_type,
+        lot_size=inst.lot_size,
+        tick_size=inst.tick_size,
+    )
+
+
+def stored_adv(
+    session: Session, key: InstrumentKey, now: datetime, sessions: int = 20
+) -> tuple[Decimal, str] | None:
+    """Average daily volume from stored daily bars (any origin), if there are any."""
+    rows = get_bars(session, key, Interval.D1, now - timedelta(days=sessions * 2), now)
+    vols = [r.volume for r in rows[-sessions:] if r.volume > 0]
+    if not vols:
+        return None
+    origin = rows[-1].source if rows else "?"
+    return Decimal(sum(vols)) / len(vols), f"stored daily bars ({len(vols)}, {origin})"
+
+
+def _other_ledger_exposure(
+    session: Session, account_id: int, horizon: Horizon
+) -> dict[InstrumentKey, Decimal]:
+    out: dict[InstrumentKey, Decimal] = {}
+    for p in portfolio.positions(session, account_id):
+        if p.horizon != horizon.value and p.quantity > 0:
+            k = _key(p.exchange, p.symbol)
+            out[k] = out.get(k, Decimal(0)) + p.average_price * p.quantity
+    return out
+
+
+def _reconcile(
+    session: Session,
+    audit: AuditLog,
+    acct: PaperAccount,
+    *,
+    at: datetime,
+    trigger: str,
+    actor_id: str,
+) -> bool:
+    result = portfolio.reconcile_account(session, acct)
+    portfolio.record_reconciliation(
+        session, audit, acct=acct, result=result, at=at, trigger=trigger, actor_id=actor_id
+    )
+    if not result.ok:
+        controls.set_kill_switch(
+            session,
+            audit,
+            active=True,
+            actor_type=ActorType.SYSTEM,
+            actor_id="reconciliation",
+            reason=f"reconciliation break on PAPER account {acct.id} ({trigger})",
+            at=at,
+            detail={"account_id": acct.id, "diffs": [d.as_dict() for d in result.diffs[:10]]},
+        )
+    return result.ok
 
 
 # ---------------------------------------------------------------------------- cycle
@@ -305,6 +409,7 @@ def run_cycle(
     actor_id: str,
     account_id: int | None = None,
     policy: FreshnessPolicy | None = None,
+    venue: OrderVenue | None = None,
 ) -> CycleResult:
     persist = account_id is not None
     if persist and not paper_enabled(settings):
@@ -321,30 +426,53 @@ def run_cycle(
 
     session_open = calendar.session_open(day)
     acct = get_account(session, account_id, lock=True) if account_id is not None else None
-    book = (
-        load_book(session, acct, since=session_open)
-        if acct is not None
-        else PaperBook(cash=Decimal(1_000_000), id_factory=_uuid_ids)
+    risk_policy = controls.active_policy(session, now)
+    env = RiskEnvironment(
+        mode="PAPER" if persist else "SIMULATION",
+        policy=risk_policy,
+        book_is_truth=not persist,
     )
+    if acct is not None:
+        recon_ok = _reconcile(session, audit, acct, at=now, trigger="pre-cycle", actor_id=actor_id)
+        env.reconciled_at, env.reconciliation_ok = now, recon_ok
+        ledger = portfolio.ledgers(session, acct.id).get(Horizon.INTRADAY.value)
+        env.ledger_allocation = None if ledger is None else ledger.allocated_capital
+        env.other_ledger_exposure = _other_ledger_exposure(session, acct.id, Horizon.INTRADAY)
+        book = load_book(session, acct, since=session_open, venue=venue)
+    else:
+        book = PaperBook(cash=Decimal(1_000_000), id_factory=_uuid_ids)
+        env.ledger_allocation = (
+            book.cash * risk_policy.ledger_allocation_pct[Horizon.INTRADAY.value]
+        )
+    ctl = controls.control_state(session)
+    env.kill_switch_active = ctl.kill_switch_active
+    env.paused_strategies = ctl.paused_strategies
+    result.controls = ctl.as_dict()
+    result.unknown_resolution = book.resolve_unknown(now)
+
     state: dict[str, Any] = dict(acct.state) if acct is not None else {}
     if state.get("day") != day.isoformat():
         state = {"day": day.isoformat(), "last_bar": {}, "entries": {}}
-    runner = IntradayRunner(strategy=strategy, book=book, calendar=calendar)
+    runner = IntradayRunner(strategy=strategy, book=book, calendar=calendar, env=env)
     if "day_start_equity" in state:
         runner.day_start_equity[day] = Decimal(state["day_start_equity"])
     else:
         runner.day_start_equity[day] = book.equity({})
         state["day_start_equity"] = str(runner.day_start_equity[day])
     loaded_orders = set(book.orders)
+    loaded_fills = len(book.fills)
 
     for key in keys:
         name = str(key)
-        inst = get_active(session, key)
-        if inst is None:
+        facts = instrument_facts(session, key)
+        if facts is None:
             result.skipped[name] = "not an active instrument in the registry"
             continue
-        book.ticks[key] = inst.tick_size
-        runner.lot_sizes[key] = inst.lot_size
+        env.instruments[key] = facts
+        book.ticks[key] = facts.tick_size
+        adv = stored_adv(session, key, now)
+        if adv is not None:
+            env.adv[key] = adv
         runner.entries[(key, day)] = int(state["entries"].get(name, 0))
         try:
             bars = list(provider.bars(key, Interval.M5, session_open, now))
@@ -352,25 +480,38 @@ def run_cycle(
         except MarketDataUnavailableError as exc:
             result.skipped[name] = f"market data unavailable: {exc}"
             continue
-        fresh = evaluate_quote(quote, now, calendar, policy).status is FreshnessStatus.FRESH
+        status = evaluate_quote(quote, now, calendar, policy).status
+        if (
+            quote is not None
+            and quote.lower_circuit is not None
+            and quote.upper_circuit is not None
+        ):
+            env.instruments[key] = replace(
+                facts, lower_circuit=quote.lower_circuit, upper_circuit=quote.upper_circuit
+            )
         last = state["last_bar"].get(name)
         older = [b for b in bars if last is not None and b.start.isoformat() <= last]
         new = [b for b in bars if last is None or b.start.isoformat() > last]
         runner.history[key] = older
+        for b in older:
+            runner.day_volume[(key, day)] += b.volume
         if older:
             runner.marks[key] = older[-1].close
         for i, bar in enumerate(new):
-            _, recs = runner.on_bar(bar, data_fresh=fresh and i == len(new) - 1)
+            # Only the newest bar can open positions; replayed bars are not current data.
+            qstatus = status.value if i == len(new) - 1 else "CATCH_UP"
+            _, recs = runner.on_bar(bar, quote_status=qstatus)
             for rec in recs:
-                row = _signal_row(
-                    rec,
-                    context="PAPER" if persist else "RESEARCH",
-                    account_id=account_id,
-                    strategy=strategy,
-                    persist_orders=persist,
-                    data_is_mock=mock,
+                session.add(
+                    _signal_row(
+                        rec,
+                        context="PAPER" if persist else "RESEARCH",
+                        account_id=account_id,
+                        strategy=strategy,
+                        persist_orders=persist,
+                        data_is_mock=mock,
+                    )
                 )
-                session.add(row)
                 result.signals.append(
                     {
                         "instrument": name,
@@ -378,6 +519,7 @@ def run_cycle(
                         "decision": rec.decision.value,
                         "at": rec.signal.at.isoformat(),
                         "risk": rec.risk.outcome.value,
+                        "failed_checks": [c.code for c in rec.risk.failed],
                         "order_id": rec.order_id if persist else None,
                     }
                 )
@@ -385,14 +527,41 @@ def run_cycle(
         if bars:
             state["last_bar"][name] = bars[-1].start.isoformat()
         state["entries"][name] = runner.entries[(key, day)]
-        if not fresh and new:
-            result.skipped.setdefault(name, "quote not FRESH: entries blocked")
+        if status is not FreshnessStatus.FRESH and new:
+            result.skipped.setdefault(name, f"quote {status.value}: entries blocked")
 
     if acct is not None:
         result.new_orders = len(set(book.orders) - loaded_orders)
-        result.new_fills = len(book.fills)
+        result.new_fills = len(book.fills) - loaded_fills
         save_book(session, acct, book, data_is_mock=mock)
         acct.state = state
+    _persist_risk(session, runner, account_id=account_id, persist_orders=persist)
+    result.risk_decisions = len(runner.risk_log)
+    breached = sorted(
+        {
+            r.proposal.strategy
+            for r in runner.risk_log
+            if any(c.code == "R8" for c in r.decision.failed)
+        }
+        - ctl.paused_strategies
+    )
+    for name in breached:
+        controls.set_strategy_paused(
+            session,
+            audit,
+            strategy=name,
+            paused=True,
+            actor_type=ActorType.SYSTEM,
+            actor_id="risk-engine",
+            reason="daily loss stop reached (R8)",
+            at=now,
+            detail={"account_id": account_id, "context": result.mode},
+        )
+        result.auto_paused.append(name)
+
+    if acct is not None:
+        session.flush()
+        _reconcile(session, audit, acct, at=now, trigger="post-cycle", actor_id=actor_id)
         result.cash = str(book.cash)
         result.equity = str(book.equity(runner.marks).quantize(Decimal("0.01")))
         audit.append(
@@ -405,11 +574,152 @@ def run_cycle(
             payload={
                 "account_kind": ACCOUNT_KIND,
                 "strategy": f"{strategy.name}@{strategy.version}",
+                "policy": risk_policy.version,
                 "new_orders": result.new_orders,
                 "new_fills": result.new_fills,
                 "signals": len(result.signals),
+                "unknown_resolution": result.unknown_resolution,
+                "auto_paused": result.auto_paused,
                 "data_is_mock": mock,
             },
         )
     session.flush()
     return result
+
+
+def _persist_risk(
+    session: Session, runner: IntradayRunner, *, account_id: int | None, persist_orders: bool
+) -> None:
+    context = "PAPER" if persist_orders else "SIMULATION"
+    for rec in runner.risk_log:
+        session.add(
+            controls.risk_check_row(
+                context=context,
+                account_id=account_id,
+                proposal=rec.proposal,
+                state=rec.state,
+                decision=rec.decision,
+                order_id=rec.order_id if persist_orders else None,
+            )
+        )
+    session.flush()
+
+
+# ---------------------------------------------------------------------------- kill switch
+@dataclass
+class KillSwitchResult:
+    changed: bool
+    cancelled_orders: list[str] = field(default_factory=list)
+    flatten_orders: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def activate_kill_switch(
+    session: Session,
+    audit: AuditLog,
+    *,
+    settings: Settings,
+    actor_type: ActorType,
+    actor_id: str,
+    reason: str,
+    at: datetime,
+    flatten_intraday: bool = False,
+) -> KillSwitchResult:
+    """Block new risk, cancel open risk-increasing PAPER orders, optionally flatten intraday.
+
+    Protective stop/target orders stay in place so open positions remain protected. Flatten
+    orders are risk-reducing and still pass the risk engine; they fill on the next cycle.
+    """
+    out = KillSwitchResult(
+        controls.set_kill_switch(
+            session,
+            audit,
+            active=True,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            reason=reason,
+            at=at,
+            detail={"flatten_intraday": flatten_intraday},
+        )
+    )
+    accounts = list(session.execute(select(PaperAccount).with_for_update()).scalars())
+    for acct in accounts:
+        book = load_book(session, acct, since=at)
+        for o in list(book.orders.values()):
+            if o.purpose == "entry" and o.state in (
+                OrderState.RISK_CHECKED,
+                OrderState.APPROVED,
+                OrderState.BROKER_ACKNOWLEDGED,
+                OrderState.PARTIALLY_FILLED,
+            ):
+                book.cancel(o, at, "kill switch")
+                out.cancelled_orders.append(o.id)
+        if flatten_intraday:
+            if not paper_enabled(settings):
+                out.notes.append("flatten skipped: PAPER trading is not enabled")
+            else:
+                out.flatten_orders += _flatten(session, acct, book, at)
+        save_book(session, acct, book, data_is_mock=_account_is_mock(session, acct))
+    session.flush()
+    return out
+
+
+def _account_is_mock(session: Session, acct: PaperAccount) -> bool:
+    row = session.execute(
+        select(OrderRow.data_is_mock).where(OrderRow.account_id == acct.id).limit(1)
+    ).scalar_one_or_none()
+    return bool(row) if row is not None else True
+
+
+def _flatten(session: Session, acct: PaperAccount, book: PaperBook, at: datetime) -> list[str]:
+    env = RiskEnvironment(mode="PAPER", kill_switch_active=True, book_is_truth=True)
+    runner = IntradayRunner(
+        strategy=IntradayOrbVwap(), book=book, calendar=SessionCalendar(), env=env
+    )
+    made: list[str] = []
+    for key, pos in list(book.positions.items()):
+        if pos.quantity <= 0 or any(o.purpose == "square_off" for o in book.working_orders(key)):
+            continue
+        facts = instrument_facts(session, key)
+        if facts is not None:
+            env.instruments[key] = facts
+        p = OrderProposal(
+            key=key,
+            horizon=book.horizon,
+            side=Side.SELL,
+            intent=Intent.REDUCE,
+            at=at,
+            ref_price=pos.average_price,
+            strategy="kill-switch",
+            idempotency_key=f"kill-flatten:{acct.id}:{key}:{at.isoformat()}",
+            quantity=pos.quantity,
+            purpose="square_off",
+        )
+        _, decision = runner.assess(p, None)
+        if not decision.accepted:
+            continue
+        order, created = book.propose(
+            key=key,
+            side=Side.SELL,
+            order_type=OrderType.MARKET,
+            quantity=decision.quantity,
+            at=at,
+            idempotency_key=p.idempotency_key,
+            strategy="kill-switch",
+            purpose="square_off",
+        )
+        if created:
+            book.transition(order, OrderState.RISK_CHECKED, at, outcome=decision.outcome.value)
+            book.submit(order, at)
+            made.append(order.id)
+        session.add(
+            controls.risk_check_row(
+                context="PAPER",
+                account_id=acct.id,
+                proposal=p,
+                state=runner.risk_state(p),
+                decision=decision,
+                order_id=order.id,
+            )
+        )
+    return made

@@ -1,6 +1,29 @@
 # Risk Management
 
-**Status:** Phase 0 specification. Limits below are **illustrative paper-test placeholders, not recommendations.** Real limits must be set by the account owner with qualified oversight.
+**Status:** Implemented in Phase 4 (`src/rhythm/risk/engine.py`, policy `paper-default-1`, engine `risk-engine-1.0`). Limits below are **illustrative paper-test placeholders, not recommendations.** Real limits must be set by the account owner with qualified oversight.
+
+**As built:**
+- **R1–R17:** implemented.
+- **R18:** blocks non-intraday entries until an event calendar exists (Phase 5).
+- **R11 / R19:** SKIP with a stated reason (no sector or correlation source).
+- **R20** (added): a sell may not exceed the ledger's own holding.
+
+**Risk-reducing orders.** Exits, protective stops/targets and square-offs are checked against R1, R2 (always allowed), R6, R16 (duplicate key) and R20 only.
+
+**Open-order limit.** R14 counts risk-increasing open orders only.
+
+**Outcomes and sizing.** Outcomes are ACCEPT / REDUCE / REVIEW / BLOCK. Sizing = the minimum of R7 (including estimated round-trip costs), R9, R10, R11 (when data exists), R12 and R13, floored to whole lots.
+
+**Daily loss stop.** It auto-pauses the strategy (actor `system`).
+
+**Kill switch** (§7):
+- cancels open *entry* orders and keeps protective stops/targets;
+- `flatten_intraday` is opt-in;
+- a reconciliation break activates it automatically.
+
+**Release and resume.** These require a user and a reason.
+
+**Decision records.** Every decision is stored in `risk_checks` with its inputs.
 
 ## 1. Principles
 

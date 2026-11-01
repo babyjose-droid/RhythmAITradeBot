@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionBadge, freshnessTone, orderBadge } from "./status";
+import { checkTone, decisionBadge, freshnessTone, orderBadge, riskOutcomeTone } from "./status";
 
 describe("visual grammar", () => {
   it("keeps candidate, approved, at-broker and fill visually distinct", () => {
@@ -31,5 +31,15 @@ describe("visual grammar", () => {
     for (const s of ["STALE", "MISSING", "INVALID", "ERROR", "weird"]) {
       expect(freshnessTone(s)).toBe("stale");
     }
+  });
+
+  it("fails closed on risk outcomes and check statuses", () => {
+    expect(riskOutcomeTone("ACCEPT")).toBe("ok");
+    expect(riskOutcomeTone("REDUCE")).toBe("reduce");
+    expect(riskOutcomeTone("BLOCK")).toBe("fail");
+    expect(riskOutcomeTone("REVIEW")).toBe("fail");
+    expect(riskOutcomeTone("???")).toBe("fail");
+    expect(checkTone("SKIP")).toBe("skip");
+    expect(checkTone("weird")).toBe("fail");
   });
 });
