@@ -31,6 +31,8 @@ services:
       RHYTHM_LOG_JSON: ${RHYTHM_LOG_JSON:-true}
       RHYTHM_MARKET_DATA_PROVIDER: ${RHYTHM_MARKET_DATA_PROVIDER:-none}
       RHYTHM_BROKER_ADAPTER: ${RHYTHM_BROKER_ADAPTER:-none}
+      RHYTHM_EVENT_PROVIDER: ${RHYTHM_EVENT_PROVIDER:-none}
+      RHYTHM_FEATURES__PAPER_TRADING: ${RHYTHM_FEATURES__PAPER_TRADING:-false}
     depends_on:
       db:
         condition: service_healthy

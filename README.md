@@ -61,6 +61,14 @@ curl "localhost:8000/v1/theses?account_id=1"
 ```
 Dashboard: **Swing workspace**.
 
+**Demo in one go (local Docker, MOCK data, PAPER mode):**
+
+```bash
+docker compose --env-file .env --env-file demo.env up -d --build
+python3 scripts/demo_paper.py        # instruments, watchlists, PAPER account, events, cycles, backtests
+open http://127.0.0.1:3300           # dashboard
+```
+
 Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the only orders are simulated PAPER orders (DB-enforced `account_kind='PAPER'`); no broker order method exists; API and dashboard listen on loopback only (no auth until Phase 8).
 
 ## Phase 0 findings (2026-10-31)
