@@ -153,3 +153,21 @@ jobs:
           docker tag rhythm-web:ci "$IMAGE:main"
           docker push "$IMAGE:sha-$SHORT_SHA"
           docker push "$IMAGE:main"
+      - name: Publish dashboard to Docker Hub (main branch only; skipped until DOCKERHUB_TOKEN secret exists)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DOCKERHUB_USERNAME: rhythmconsultancy
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "DOCKERHUB_TOKEN secret not set; skipping Docker Hub publish." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          IMAGE="docker.io/${DOCKERHUB_USERNAME}/rhythm-ai-trader-web"
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker tag rhythm-web:ci "$IMAGE:sha-$SHORT_SHA"
+          docker tag rhythm-web:ci "$IMAGE:main"
+          docker push "$IMAGE:sha-$SHORT_SHA"
+          docker push "$IMAGE:main"
+          echo "Published $IMAGE:sha-$SHORT_SHA and $IMAGE:main" >> "$GITHUB_STEP_SUMMARY"
