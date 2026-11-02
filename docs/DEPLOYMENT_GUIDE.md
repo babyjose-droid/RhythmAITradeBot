@@ -16,7 +16,11 @@ Every push to `main` that passes all CI checks publishes the API image to GitHub
 
 Settings added in Phase 5: `RHYTHM_EVENT_PROVIDER` (`none` default; `mock` allowed only in local/test — refused in staging/production like the other mock sources).
 
-Optional Docker Hub mirror (`rhythmconsultancy/rhythm-ai-trader`): the CI step runs only if the repository secret `DOCKERHUB_TOKEN` exists (owner adds it in GitHub → Settings → Secrets; never in code).
+Docker Hub mirror (`docker.io/rhythmconsultancy/rhythm-ai-trader`, tags `main` and `sha-<commit>`): active since 2026-11-02. The CI step runs only when the repository secret `DOCKERHUB_TOKEN` exists (the owner adds it in GitHub → Settings → Secrets and variables → Actions; never in code or chat). Rotate it in Docker Hub → Account settings → Personal access tokens, then update the secret.
+
+```bash
+docker pull rhythmconsultancy/rhythm-ai-trader:main
+```
 
 Pull and run (with a PostgreSQL URL of your own):
 ```bash
