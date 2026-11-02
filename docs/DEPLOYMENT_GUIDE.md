@@ -4,7 +4,7 @@
 
 ## Local (Phase 1 target)
 
-`docker compose up --build` → `db` (Postgres 16, healthchecked) → `migrate` (`alembic upgrade head`, runs once) → `api` (non-root container, healthcheck on `/health/live`, published on `127.0.0.1:8000`). Then `web` (Next.js dashboard, non-root, published on `127.0.0.1:3000`, proxies `/api/*` to the `api` service). Configuration via `.env` copied from `.env.example` (placeholders only). Default `TRADING_MODE=RESEARCH_ONLY`.
+`docker compose up --build` → `db` (Postgres 16, healthchecked) → `migrate` (`alembic upgrade head`, runs once) → `api` (non-root container, healthcheck on `/health/live`, published on `127.0.0.1:8000`). Then `web` (Next.js dashboard, non-root, published on `127.0.0.1:3300`, proxies `/api/*` to the `api` service). Configuration via `.env` copied from `.env.example` (placeholders only). Default `TRADING_MODE=RESEARCH_ONLY`.
 
 ## Container images (automatic)
 

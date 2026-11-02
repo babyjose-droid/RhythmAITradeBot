@@ -40,7 +40,8 @@ services:
     build: .
     environment: *app-env
     ports:
-      - "127.0.0.1:8000:8000"
+      # Override with API_HOST_PORT if 8000 is taken on your machine.
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -54,7 +55,8 @@ services:
         RHYTHM_API_URL: http://api:8000
     # Published on 127.0.0.1 only (no dashboard authentication until Phase 8).
     ports:
-      - "127.0.0.1:3000:3000"
+      # Host port defaults to 3300 so it does not collide with other dev apps on 3000.
+      - "127.0.0.1:${WEB_HOST_PORT:-3300}:3000"
     depends_on:
       - api
     restart: unless-stopped

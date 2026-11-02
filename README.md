@@ -35,7 +35,7 @@ Phase 3 — backtest and PAPER trading on MOCK data (local only):
 .venv/bin/rhythm-cli backtest-run --symbols NSE:MOCKA,NSE:MOCKB --days 30   # stores a run; results are pipeline checks only
 .venv/bin/rhythm-cli paper-account-create --name demo --cash 1000000
 RHYTHM_TRADING_MODE=PAPER RHYTHM_FEATURES__PAPER_TRADING=true RHYTHM_MARKET_DATA_PROVIDER=mock RHYTHM_BROKER_ADAPTER=mock .venv/bin/rhythm-api
-cd web && npm ci && npm run build && npm start      # dashboard on http://127.0.0.1:3000 (or: docker compose up web)
+cd web && npm ci && npm run build && npm start      # dashboard on http://127.0.0.1:3300 (or: docker compose up web)
 ```
 
 Phase 4 — risk controls (PAPER): every order passes the risk engine (R1–R20); mutating calls need an `Idempotency-Key` header.

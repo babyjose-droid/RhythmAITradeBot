@@ -30,7 +30,7 @@
 
 **Migration** `0003_paper_backtests` adds `paper_accounts`, `orders`, `order_events`, `fills`, `paper_positions`, `strategy_signals`, `backtest_runs`, `backtest_trades`, plus append-only triggers.
 
-**Docker:** a new `web` service in Compose (`127.0.0.1:3000`), and CI publishes a second image `ghcr.io/<repo>-web`.
+**Docker:** a new `web` service in Compose (`127.0.0.1:3300`), and CI publishes a second image `ghcr.io/<repo>-web`.
 
 ## Commands run and results (exact)
 
