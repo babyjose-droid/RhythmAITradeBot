@@ -20,6 +20,9 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 6:** the only fundamentals source is MOCK (synthetic quarters). Long-term PAPER on real data stays blocked by R21 until a licensed, point-in-time fundamentals vendor with restatement history is configured (B-06 / D-03).
+- **Phase 6:** no corporate-action adjustment of EPS/price (splits/bonus) and no sector data; P/E and P/B use the last close and unadjusted TTM figures.
+- **Phase 6:** long-term positions have no tax-lot / holding-period tracking; the review schedule counts sessions, not calendar dates.
 - **Phase 5:** the only event source is MOCK (synthetic results dates). A real corporate-actions/results calendar is needed (B-06), so swing PAPER on real data stays blocked by R18 until one is configured.
 - **Phase 5:** no gap-risk sizing. An overnight gap beyond the stop fills at the open and can exceed the planned loss (R7 assumes the stop price).
 - **Phase 5:** swing positions are not adjusted for corporate actions (splits/bonus) — no source yet.

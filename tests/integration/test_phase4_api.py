@@ -20,6 +20,7 @@ from rhythm.db.session import create_session_factory, session_scope
 from rhythm.execution.gateway import FlakyVenue
 from rhythm.instruments import watchlists as wl_svc
 from rhythm.paper import service as paper
+from rhythm.risk.policy import DEFAULT_POLICY
 from rhythm.strategies.intraday_orb import IntradayOrbVwap
 from tests.integration.test_phase3_api import KEY, SIGNAL_AT, Env
 
@@ -122,7 +123,7 @@ def test_policy_versioning(env4: Env) -> None:
     c = env4.c
     wid, aid = _setup(env4)
     before = c.get("/v1/risk/policies").json()
-    assert before["active"]["version"] == "paper-default-2" and before["history"] == []
+    assert before["active"]["version"] == DEFAULT_POLICY.version and before["history"] == []
     bad = c.post(
         "/v1/risk/policies",
         json={"params": {"intraday_risk_per_trade_pct": "0.9"}, "reason": "too big"},

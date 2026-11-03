@@ -25,7 +25,8 @@
 | POST | `/v1/paper/accounts/{id}/reconcile` · GET `/v1/reconciliations?account_id=` | 4 ✅ | a break activates the kill switch |
 | POST | `/v1/approvals/{order_id}` | 4/8 | approve/reject with reason |
 | POST | `/v1/events/sync` · POST `/v1/events` · GET `/v1/events?watchlist_id=` | 5 ✅ | event calendar. Sync = coverage proof for R18. Manual entries need `source_ref`; `known_at` ≤ now |
-| GET | `/v1/theses?account_id=&status=` · GET `/v1/theses/{id}` | 5 ✅ | swing theses with append-only history |
+| GET | `/v1/theses?account_id=&status=&horizon=` · GET `/v1/theses/{id}` | 5–6 ✅ | swing and long-term theses with append-only history (reviews and rebalances are OPEN→OPEN events with metrics = valuation history) |
+| POST | `/v1/fundamentals/sync` · GET `/v1/fundamentals/{exchange}/{symbol}?quarters=` | 6 ✅ | point-in-time quarterly fundamentals (MOCK today); GET returns published quarters plus derived metrics with formulas and `is_mock`. 503 when no provider is configured |
 | POST | `/v1/paper/accounts/{id}/cycle` with `strategy: swing_trend_pullback` | 5 ✅ | swing PAPER cycle (after the close). Orders and signals accept `?horizon=` |
 | GET | `/v1/research/assessments/{id}` | 7 | packet, sources, output, validation result |
 | GET | `/v1/broker/login-url` · GET `/v1/broker/callback` | 2 (read-only verification, after approval) | state validation; server-side token exchange |

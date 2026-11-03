@@ -17,14 +17,17 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 SYMBOLS = ["NSE:MOCKA", "NSE:MOCKB", "NSE:MOCKC"]
+LONG_TERM = ["NSE:MOCKE", "NSE:MOCKF", "NSE:MOCKA"]  # MOCKE passes the quality screen
 
 
 class Api:
     def __init__(self, base: str) -> None:
+        if not base.startswith(("http://", "https://")):
+            raise SystemExit(f"API base must be http(s): {base}")
         self.base = base.rstrip("/")
 
     def call(self, method: str, path: str, body: Any = None) -> tuple[int, Any]:
@@ -32,9 +35,9 @@ class Api:
         if method in ("POST", "PUT"):
             headers["Idempotency-Key"] = f"demo-{uuid.uuid4().hex}"
         data = None if body is None else json.dumps(body).encode()
-        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)  # noqa: S310 (http(s) checked)
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with urllib.request.urlopen(req, timeout=120) as r:  # noqa: S310
                 raw = r.read()
                 return r.status, json.loads(raw) if raw else None
         except urllib.error.HTTPError as e:
@@ -75,14 +78,18 @@ def main() -> int:
     _, existing = api.call("GET", "/v1/watchlists")
     by_name = {w["name"]: w for w in existing}
     wl: dict[str, int] = {}
-    for name, horizon in (("Demo intraday", "INTRADAY"), ("Demo swing", "SWING")):
+    for name, horizon in (
+        ("Demo intraday", "INTRADAY"),
+        ("Demo swing", "SWING"),
+        ("Demo long-term", "LONG_TERM"),
+    ):
         if name in by_name:
             wl[horizon] = by_name[name]["id"]
         else:
             wl[horizon] = api.call("POST", "/v1/watchlists", {"name": name, "horizon": horizon})[1][
                 "id"
             ]
-        for s in SYMBOLS:
+        for s in LONG_TERM if horizon == "LONG_TERM" else SYMBOLS:
             api.call("POST", f"/v1/watchlists/{wl[horizon]}/items", {"instrument": s})
     print(f"watchlists: {wl}")
 
@@ -96,8 +103,12 @@ def main() -> int:
     aid = acct["id"]
     print(f"account id {aid} (PAPER, starting cash 10,00,000)")
 
-    step("Event calendar (MOCK results dates) for the swing gate R18")
-    print(api.call("POST", "/v1/events/sync", {"watchlist_id": wl["SWING"]})[1])
+    step("Event calendar (MOCK results dates) for the overnight/event gate R18")
+    for h in ("SWING", "LONG_TERM"):
+        print(api.call("POST", "/v1/events/sync", {"watchlist_id": wl[h]})[1])
+
+    step("Fundamentals (MOCK published quarters) for the long-term horizon (R21)")
+    print(api.call("POST", "/v1/fundamentals/sync", {"watchlist_id": wl["LONG_TERM"]})[1])
 
     step("Intraday PAPER cycle (does nothing useful outside 09:15-15:30 IST on weekdays)")
     code, r = api.call("POST", f"/v1/paper/accounts/{aid}/cycle", {"watchlist_id": wl["INTRADAY"]})
@@ -119,15 +130,32 @@ def main() -> int:
     else:
         print(code, r)
 
+    step("Long-term PAPER cycle (quality at a reasonable price, allocation band)")
+    code, r = api.call(
+        "POST",
+        f"/v1/paper/accounts/{aid}/cycle",
+        {"watchlist_id": wl["LONG_TERM"], "strategy": "long_term_quality_value"},
+    )
+    if isinstance(r, dict):
+        print(code, {k: r.get(k) for k in ("new_orders", "theses", "skipped")})
+        for k, d in r.get("diagnostics", {}).items():
+            print("  ", k, d.get("action") or d.get("reason"), d.get("entry_checks") or "")
+    else:
+        print(code, r)
+
     step("Backtests on MOCK data (pipeline checks, not evidence of edge)")
-    now = datetime.now(timezone.utc)
-    for strategy, days in (("intraday_orb_vwap", 20), ("swing_trend_pullback", 400)):
+    now = datetime.now(UTC)
+    for strategy, days in (
+        ("intraday_orb_vwap", 20),
+        ("swing_trend_pullback", 400),
+        ("long_term_quality_value", 500),
+    ):
         code, r = api.call(
             "POST",
             "/v1/backtests",
             {
                 "strategy": strategy,
-                "symbols": SYMBOLS[:2],
+                "symbols": LONG_TERM[:2] if strategy.startswith("long") else SYMBOLS[:2],
                 "start": (now - timedelta(days=days)).isoformat(),
                 "end": now.isoformat(),
                 "data_source": "provider",

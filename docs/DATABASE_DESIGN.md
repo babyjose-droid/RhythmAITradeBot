@@ -26,6 +26,8 @@ The rest is the Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1
 
 **Reference & market data** — `instruments` (exchange, scrip_code, trading_symbol, isin, tick_size, lot_size, inst_type; validity range `valid_from/valid_to` for point-in-time), `instrument_snapshots` (daily scrip-master archive), `watchlists`, `watchlist_items`, `market_data_points` (bars/quotes; partitioned by month; unique(instrument, interval, bar_ts, source)), `data_quality_events`.
 
+**Fundamentals (Phase 6, migration 0006)** — `fundamental_snapshots` (exchange, symbol, period_end, known_at, source, source_ref, metrics JSONB of decimal strings; unique(exchange, symbol, period_end, source, known_at); never updated — a restatement is a new row).
+
 **Strategies** — `strategy_definitions` (horizon), `strategy_versions` (semver, code hash, params JSON), `strategy_runs` (scheduled/backtest/paper, data snapshot id), `strategy_signals`.
 
 **Research** — `research_packets` (frozen evidence JSON + hash), `research_sources` (url/ref, retrieved_at, trust=untrusted), `ai_assessments` (model, prompt_version_id, raw response ref, validated JSON, validation status, tokens, cost, latency), `prompt_versions`.

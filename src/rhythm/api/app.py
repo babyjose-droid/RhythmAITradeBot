@@ -35,6 +35,8 @@ from rhythm.core.logging import configure_logging, get_logger
 from rhythm.db.session import create_db_engine, create_session_factory, session_scope
 from rhythm.events.mock import MockEventProvider
 from rhythm.events.types import EventProvider
+from rhythm.fundamentals.mock import MockFundamentalsProvider
+from rhythm.fundamentals.types import FundamentalsProvider
 from rhythm.marketdata.freshness import FreshnessPolicy
 from rhythm.marketdata.mock import MockMarketDataProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
@@ -59,6 +61,7 @@ def _audit_lifecycle(state: AppState, event_type: str) -> None:
                     "market_data_provider": state.settings.market_data_provider,
                     "broker_adapter": state.settings.broker_adapter,
                     "event_provider": state.settings.event_provider,
+                    "fundamentals_provider": state.settings.fundamentals_provider,
                 },
             )
     except Exception:
@@ -79,6 +82,15 @@ def build_events(settings: Settings) -> EventProvider | None:
     return None
 
 
+def build_fundamentals(
+    settings: Settings, market: MarketDataProvider | None
+) -> FundamentalsProvider | None:
+    if settings.fundamentals_provider == "mock":
+        mock = market if isinstance(market, MockMarketDataProvider) else MockMarketDataProvider()
+        return MockFundamentalsProvider(mock.price_at)
+    return None
+
+
 def build_broker(settings: Settings, clock: Clock) -> BrokerReadAdapter | None:
     if settings.broker_adapter == "mock":
         return MockBrokerAdapter(clock=clock)
@@ -94,6 +106,7 @@ def create_app(
     broker: BrokerReadAdapter | None = None,
     calendar: SessionCalendar | None = None,
     events: EventProvider | None = None,
+    fundamentals: FundamentalsProvider | None = None,
     configure_logs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()  # raises on unsafe config (e.g. LIVE)
@@ -122,6 +135,7 @@ def create_app(
             ),
         ),
         events=events or build_events(settings),
+        fundamentals=fundamentals or build_fundamentals(settings, market_data),
     )
 
     @asynccontextmanager

@@ -37,9 +37,17 @@
 
 **Not implemented:** gap-risk sizing (see KNOWN_LIMITATIONS), 200-day filter and breakout variant (a possible v2). Parameters are frozen for v1.0.0.
 
-## 4. Long-term (Phase 6) — evidence-based thesis tracking
+## 4. Long-term (Phase 6) — implemented: `long_term_quality_value@1.0.0`
 
-Quality/valuation screens from licensed fundamentals (B-06); output is a thesis with allocation band, key metrics with provenance, review date; actions ACCUMULATE/HOLD/REDUCE map to ADD/HOLD/REDUCE candidates. Without licensed fundamentals the module runs on mock data clearly labelled MOCK.
+Rules-only baseline; it exercises the pipeline and is not a claim of edge. Fundamentals are point-in-time (`known_at`); today the only source is MOCK (licensed data: D-03 / B-06).
+
+- **Evidence:** TTM EPS, TTM operating cash flow, ROE (TTM net income / latest equity), debt/equity, P/E and P/B at the last close, YoY TTM EPS growth (needs 8 quarters). Each derived metric stores its formula and inputs; snapshots store provenance.
+- **Quality:** ROE ≥ 15 %, D/E ≤ 1.0, TTM OCF > 0, EPS growth ≥ 0.
+- **Entry (ENTER → BUY_CANDIDATE):** quality, P/E ≤ 30, fundamentals ≤ 200 days old, no known event within 5 days, at least 8 published quarters. Target weight 10 % of the LONG_TERM ledger.
+- **Thesis:** rationale, invalidation rules (`roe_below` 10 %, `ocf_ttm_not_positive`, `eps_growth_below` −20 %), allocation band 5 / 10 / 15 %, review interval, key metrics, evidence.
+- **Exit (EXIT → EXIT_CANDIDATE):** any invalidation rule breaks.
+- **Review:** every 20 held sessions and when new results are published. P/E > 45 → REDUCE to 5 %; weight > 15 % → REDUCE to 10 %; weight < 5 % with thesis intact → ADD to 10 %; otherwise HOLD. Each review is recorded as an OPEN→OPEN thesis event (valuation history).
+- No stop or target orders; sizing comes from the target weight (runner) capped by R7's allocation band.
 
 ## 5. Claude's role
 

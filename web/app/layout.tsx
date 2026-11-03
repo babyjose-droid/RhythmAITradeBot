@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/">Overview</Link>
             <Link href="/intraday">Intraday workspace</Link>
             <Link href="/swing">Swing workspace</Link>
+            <Link href="/long-term">Long-term</Link>
             <Link href="/portfolio">Portfolio &amp; reconciliation</Link>
             <Link href="/risk">Risk &amp; controls</Link>
             <Link href="/backtests">Backtests</Link>

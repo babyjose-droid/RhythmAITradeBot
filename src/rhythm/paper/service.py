@@ -54,6 +54,7 @@ from rhythm.execution.runner import (
     SignalRecord,
     SwingRunner,
 )
+from rhythm.fundamentals import store as fundamentals_store
 from rhythm.instruments.registry import get_active
 from rhythm.marketdata.bars import get_bars
 from rhythm.marketdata.freshness import (
@@ -109,6 +110,8 @@ class CycleResult:
     risk_decisions: int = 0
     auto_paused: list[str] = field(default_factory=list)
     horizon: str = "INTRADAY"
+    # Why (not): the strategy's own summary per instrument for the last bar evaluated.
+    diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
     theses: dict[str, int] = field(default_factory=dict)
 
 
@@ -545,8 +548,8 @@ def run_cycle(
     venue: OrderVenue | None = None,
 ) -> CycleResult:
     """Run one cycle for the strategy's horizon (INTRADAY 5-minute or SWING daily)."""
-    if strategy.horizon is Horizon.SWING:
-        return _run_swing(
+    if strategy.horizon in (Horizon.SWING, Horizon.LONG_TERM):
+        return _run_daily(
             session,
             keys=keys,
             provider=provider,
@@ -559,8 +562,6 @@ def run_cycle(
             account_id=account_id,
             venue=venue,
         )
-    if strategy.horizon is not Horizon.INTRADAY:
-        raise ValueError(f"no PAPER workflow for {strategy.horizon.value} yet")
     now = clock.now()
     day = now.astimezone(EXCHANGE_TZ).date()
     mock = provider.origin is DataOrigin.MOCK
@@ -667,7 +668,7 @@ def run_cycle(
 SWING_LOOKBACK_DAYS = 400
 
 
-def _run_swing(
+def _run_daily(
     session: Session,
     *,
     keys: Sequence[InstrumentKey],
@@ -681,20 +682,21 @@ def _run_swing(
     account_id: int | None,
     venue: OrderVenue | None,
 ) -> CycleResult:
-    """Daily cycle for multi-day positions. Run after the close (or before the next open).
+    """Daily cycle for multi-day positions (SWING and LONG_TERM). Run after the close.
 
     The first cycle for an instrument uses the history only as warm-up and evaluates the
     latest completed session; later cycles process every session not yet seen. Only the
     latest session, when its daily bar is FRESH, may open positions.
     """
+    horizon = strategy.horizon
     now = clock.now()
     mock = provider.origin is DataOrigin.MOCK
     persist = account_id is not None
     result = CycleResult("PAPER" if persist else "RESEARCH", account_id, now, data_is_mock=mock)
-    result.horizon = Horizon.SWING.value
+    result.horizon = horizon.value
     lg = _open_ledger(
         session,
-        horizon=Horizon.SWING,
+        horizon=horizon,
         settings=settings,
         now=now,
         since=now - timedelta(days=7),
@@ -706,7 +708,7 @@ def _run_swing(
     book, env = lg.book, lg.env
     result.controls = lg.ctl.as_dict()
     result.unknown_resolution = book.resolve_unknown(now)
-    state = _ledger_state(lg.acct, Horizon.SWING)
+    state = _ledger_state(lg.acct, horizon)
     state.setdefault("last_bar", {})
     runner = SwingRunner(strategy=strategy, book=book, calendar=calendar, env=env)
     loaded_orders = set(book.orders)
@@ -741,6 +743,10 @@ def _run_swing(
                 today + timedelta(days=120),
             )
         )
+        if horizon is Horizon.LONG_TERM:
+            env.fundamentals[key] = tuple(fundamentals_store.known(session, key, now))
+            if not env.fundamentals[key]:
+                result.skipped.setdefault(name, "no published fundamentals: entries blocked (R21)")
         synced = event_store.last_sync(session, key, now)
         if synced is not None:
             env.event_synced_at[key] = synced
@@ -776,6 +782,7 @@ def _run_swing(
 
     if latest_day is not None:
         state["day_flow"] = str(runner.day_flow(latest_day))
+    result.diagnostics = _diag_summary(runner)
     _finish(
         session,
         lg,
@@ -796,7 +803,7 @@ def _run_swing(
         nxt = calendar.session_close(_next_trading_day(calendar, today))
         common: dict[str, Any] = {
             "account_id": lg.acct.id,
-            "horizon": Horizon.SWING,
+            "horizon": horizon,
             "book": book,
             "at": now,
             "next_review_at": nxt,
@@ -805,7 +812,7 @@ def _run_swing(
         created, invalidated = theses.record_signals(
             session,
             account_id=lg.acct.id,
-            horizon=Horizon.SWING,
+            horizon=horizon,
             records=runner.signal_log,
             new_order_ids=set(book.orders) - loaded_orders,
             data_is_mock=mock,
@@ -818,8 +825,28 @@ def _run_swing(
             "opened": before["opened"] + after["opened"],
             "closed": before["closed"] + after["closed"],
             "checked": after["checked"],
+            "reviewed": after.get("reviewed", 0),
         }
     return result
+
+
+_DIAG_KEYS = (
+    "reason",
+    "action",
+    "checks",
+    "entry_checks",
+    "exit_reasons",
+    "reviewed",
+    "weight",
+    "days_to_next_event",
+    "latest_period",
+)
+
+
+def _diag_summary(runner: BaseRunner) -> dict[str, dict[str, Any]]:
+    return {
+        str(k): {x: d[x] for x in _DIAG_KEYS if x in d} for k, d in runner.last_diagnostics.items()
+    }
 
 
 def _next_trading_day(calendar: SessionCalendar, d: date) -> date:
@@ -959,7 +986,7 @@ def activate_kill_switch(
     )
     accounts = list(session.execute(select(PaperAccount).with_for_update()).scalars())
     for acct in accounts:
-        for horizon in (Horizon.INTRADAY, Horizon.SWING):
+        for horizon in Horizon:
             book = load_book(session, acct, since=at, horizon=horizon)
             for o in list(book.orders.values()):
                 if o.purpose == "entry" and o.state in (

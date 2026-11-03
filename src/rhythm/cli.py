@@ -57,7 +57,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_bt.add_argument(
         "--strategy",
         default="intraday_orb_vwap",
-        choices=["intraday_orb_vwap", "swing_trend_pullback"],
+        choices=["intraday_orb_vwap", "swing_trend_pullback", "long_term_quality_value"],
     )
     p_bt.add_argument("--symbols", default="NSE:MOCKA,NSE:MOCKB,NSE:MOCKC")
     p_bt.add_argument("--days", type=int, default=30)
@@ -136,6 +136,8 @@ def _run(args: argparse.Namespace) -> int:
         from rhythm.backtest.store import FULL, save_run  # noqa: PLC0415
         from rhythm.core.market import Horizon  # noqa: PLC0415
         from rhythm.events.mock import MockEventProvider  # noqa: PLC0415
+        from rhythm.fundamentals.mock import MockFundamentalsProvider  # noqa: PLC0415
+        from rhythm.fundamentals.store import HISTORY_START  # noqa: PLC0415
         from rhythm.strategies.registry import get_strategy  # noqa: PLC0415
 
         keys = tuple(InstrumentKey.parse(x) for x in args.symbols.split(","))
@@ -147,10 +149,14 @@ def _run(args: argparse.Namespace) -> int:
         interval = expected_interval(strat)
         bt_bars = {k: list(provider.bars(k, interval, start, end)) for k in keys}
         events = {}
-        if strat.horizon is Horizon.SWING:
+        fundamentals = {}
+        if strat.horizon is not Horizon.INTRADAY:
             ev = MockEventProvider()
             horizon_end = end.date() + timedelta(days=60)
             events = {k: tuple(ev.events(k, start.date(), horizon_end)) for k in keys}
+        if strat.horizon is Horizon.LONG_TERM:
+            fp = MockFundamentalsProvider(provider.price_at)
+            fundamentals = {k: tuple(fp.snapshots(k, HISTORY_START, end.date())) for k in keys}
         cfg = BacktestConfig(
             symbols=keys,
             start=start,
@@ -158,6 +164,7 @@ def _run(args: argparse.Namespace) -> int:
             interval=interval,
             initial_capital=Decimal(args.capital),
             events=events,
+            fundamentals=fundamentals,
         )
         bt = run_backtest(strat, cfg, bt_bars, calendar=cal)
         with session_scope(factory) as s:

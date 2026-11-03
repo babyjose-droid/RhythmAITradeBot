@@ -2,6 +2,12 @@
 
 **Status:** Phase 5: 322 Python tests (unit + integration on real PostgreSQL) and 6 web tests, all passing on 2026-11-01. Exact output is in the PHASE_1–5 reports.
 
+## Phase 6 coverage
+
+- Unit (`test_phase6_core.py`, 29): snapshot validation, derived metrics and formulas, point-in-time selection with restatements, MOCK determinism and publication lag, look-ahead guard, entry with thesis, each blocked-entry reason, invalidation exit, hold, review rebalances (stretched P/E, above band, below band), new-results review, R7 band, R18/R21 gates, policy bounds, weight-based sizing with no stop orders, rebalance orders, backtest determinism and fundamentals sensitivity.
+- Integration on PostgreSQL (`test_phase6_api.py`, 4): fundamentals sync/listing (no rewrite, unpublished quarter hidden), entry blocked without fundamentals, full lifecycle (entry → fill → new-results review with valuation history; clean reconciliation and audit chain), long-term backtest API.
+- Web (`status.test.ts`): long-term rule descriptions and band position.
+
 ## Phase 5 coverage
 
 - **Swing strategy:** entry with thesis, insufficient history, no trend, event proximity, the three exit reasons, holding with no reason.

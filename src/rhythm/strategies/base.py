@@ -27,6 +27,8 @@ class LookAheadError(RhythmError):
 
 class SignalType(StrEnum):
     ENTER_LONG = "ENTER_LONG"
+    ADD_LONG = "ADD_LONG"  # increase an existing position (long-term rebalancing)
+    REDUCE_LONG = "REDUCE_LONG"  # partial sale towards a lower target weight
     EXIT_LONG = "EXIT_LONG"
 
 
@@ -58,14 +60,17 @@ class Signal:
     reasons: tuple[str, ...] = ()
     # Multi-day strategies state *why* they enter and what would prove them wrong.
     thesis: Mapping[str, Any] | None = None
+    # Long-term: desired weight of the position within its ledger's allocated capital.
+    target_weight: Decimal | None = None
 
     @property
     def decision(self) -> DecisionState:
-        return (
-            DecisionState.BUY_CANDIDATE
-            if self.type is SignalType.ENTER_LONG
-            else DecisionState.EXIT_CANDIDATE
-        )
+        return {
+            SignalType.ENTER_LONG: DecisionState.BUY_CANDIDATE,
+            SignalType.ADD_LONG: DecisionState.ADD_CANDIDATE,
+            SignalType.REDUCE_LONG: DecisionState.REDUCE_CANDIDATE,
+            SignalType.EXIT_LONG: DecisionState.EXIT_CANDIDATE,
+        }[self.type]
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,9 @@ class StrategyContext:
     position: PositionView | None = None
     entries_today: int = 0
     events: tuple[EventView, ...] = ()
+    # Long-term: published fundamentals (oldest first) and the ledger's allocated capital.
+    fundamentals: tuple[Any, ...] = ()
+    capital: Decimal | None = None
     # Daily bars end at the session close, not 24 h after the open: the runner supplies it.
     bar_end: Callable[[Bar], datetime] = default_bar_end
 
@@ -109,6 +117,9 @@ class StrategyContext:
         for e in self.events:
             if ensure_utc(e.known_at) > now:
                 raise LookAheadError(f"event {e.kind} {e.event_date} was not known at {now}")
+        for f in self.fundamentals:
+            if ensure_utc(f.known_at) > now:
+                raise LookAheadError(f"fundamentals for {f.period_end} not published at {now}")
         prev: datetime | None = None
         for b in self.bars:
             end = self.bar_end(b)

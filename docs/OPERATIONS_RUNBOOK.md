@@ -24,6 +24,10 @@ After the close (from about 15:45 IST): sync the event calendar (at least weekly
 
 The next morning's cycle is not needed: fills happen when the next after-close cycle processes that session.
 
+## Long-term routine (PAPER, Phase 6)
+
+After the close: sync fundamentals (daily is fine — nothing is rewritten) and the event calendar (weekly), run the long-term cycle, then review the Long-term page: new-results reviews, any REDUCE/ADD rebalances, and INVALIDATED theses (exit queued for the next open). Remember every fundamental number is MOCK.
+
 ## Phase 4 control procedures (PAPER)
 
 - **Kill switch:**

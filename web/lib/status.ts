@@ -117,7 +117,25 @@ export function describeRule(rule: Record<string, unknown>): string {
       return `held ${String(rule.value)} sessions`;
     case "exit_before_event_days":
       return `known event within ${String(rule.value)} day(s)`;
+    case "roe_below":
+      return `ROE below ${pct(rule.value)}`;
+    case "ocf_ttm_not_positive":
+      return "operating cash flow (TTM) not positive";
+    case "eps_growth_below":
+      return `EPS growth below ${pct(rule.value)}`;
     default:
       return JSON.stringify(rule);
   }
+}
+
+function pct(v: unknown): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? `${(n * 100).toFixed(0)}%` : String(v);
+}
+
+/** Where a weight sits relative to its allocation band. */
+export function bandPosition(weight: number, min: number, max: number): "below" | "within" | "above" {
+  if (weight < min) return "below";
+  if (weight > max) return "above";
+  return "within";
 }

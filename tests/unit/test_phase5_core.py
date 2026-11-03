@@ -209,7 +209,7 @@ def test_swing_costs_use_delivery_rates() -> None:
 def test_policy_event_bounds() -> None:
     with pytest.raises(PolicyValidationError):
         RiskPolicy.from_params("x", DEFAULT_POLICY.to_params() | {"event_blackout_days": 99})
-    assert DEFAULT_POLICY.version == "paper-default-2"
+    assert DEFAULT_POLICY.event_blackout_days == 3
 
 
 # ---------------------------------------------------------------------------- runner

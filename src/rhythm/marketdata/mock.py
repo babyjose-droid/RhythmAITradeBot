@@ -66,6 +66,10 @@ class MockMarketDataProvider:
         noise = rng.uniform(-0.004, 0.004)
         return round_to_tick(Decimal(str(base * (1 + wave + noise))), TICK)
 
+    def price_at(self, key: InstrumentKey, at: datetime) -> Decimal:
+        """The synthetic price at ``at`` (used to scale MOCK fundamentals to MOCK prices)."""
+        return self._price_at(key, at)
+
     def _check(self, key: InstrumentKey) -> None:
         if self.scenario.outage or key in self.scenario.errors:
             raise MarketDataUnavailableError(f"mock provider error for {key}")

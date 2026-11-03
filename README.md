@@ -2,7 +2,7 @@
 
 AI-assisted research, portfolio decision-support and paper-trading platform for Indian cash equities (initial broker: Sharekhan). Claude is advisory only; deterministic strategy rules, portfolio accounting and an independent risk engine decide whether a candidate may become an order. **Live trading is disabled by default and is not implemented.** Nothing in this project promises returns.
 
-**Current phase: 5 — Swing strategy, event gate, thesis tracking, multi-day PAPER (complete, awaiting review before Phase 6).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_5_REPORT.md`.
+**Current phase: 6 — Long-term fundamentals, theses, valuation history, allocation bands (complete, awaiting review before Phase 7).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_6_REPORT.md`.
 
 ## Quick start (local)
 
@@ -60,6 +60,19 @@ curl "localhost:8000/v1/theses?account_id=1"
 .venv/bin/rhythm-cli backtest-run --strategy swing_trend_pullback --days 400
 ```
 Dashboard: **Swing workspace**.
+
+Phase 6 — long-term (MOCK fundamentals only until licensed data, D-03). Run after the close:
+
+```bash
+RHYTHM_FUNDAMENTALS_PROVIDER=mock ...rhythm-api              # plus the settings above
+curl -X POST localhost:8000/v1/fundamentals/sync -H 'Idempotency-Key: fsync-0001' \
+     -H 'content-type: application/json' -d '{"watchlist_id":3}'      # R21 needs published fundamentals
+curl "localhost:8000/v1/fundamentals/NSE/MOCKE?quarters=8"            # quarters + derived metrics with formulas
+curl -X POST localhost:8000/v1/paper/accounts/1/cycle -H 'Idempotency-Key: lt-0001' \
+     -H 'content-type: application/json' -d '{"watchlist_id":3,"strategy":"long_term_quality_value"}'
+curl "localhost:8000/v1/theses?account_id=1&horizon=LONG_TERM"
+```
+Dashboard: **Long-term** page.
 
 **Demo in one go (local Docker, MOCK data, PAPER mode):**
 

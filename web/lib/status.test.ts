@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkTone,
   decisionBadge,
+  bandPosition,
   describeRule,
   freshnessTone,
   orderBadge,
@@ -57,5 +58,13 @@ describe("visual grammar", () => {
     expect(thesisTone("WEIRD")).toBe("fail");
     expect(describeRule({ rule: "close_below_sma", window: 50 })).toBe("close below SMA50");
     expect(describeRule({ rule: "stop", price: "120.30" })).toBe("stop at ₹120.30");
+  });
+
+  it("describes long-term rules and band positions", () => {
+    expect(describeRule({ rule: "roe_below", value: "0.10" })).toBe("ROE below 10%");
+    expect(describeRule({ rule: "ocf_ttm_not_positive" })).toBe("operating cash flow (TTM) not positive");
+    expect(bandPosition(0.02, 0.05, 0.15)).toBe("below");
+    expect(bandPosition(0.1, 0.05, 0.15)).toBe("within");
+    expect(bandPosition(0.2, 0.05, 0.15)).toBe("above");
   });
 });

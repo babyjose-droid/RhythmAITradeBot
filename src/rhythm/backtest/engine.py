@@ -32,6 +32,7 @@ from rhythm.execution.runner import (
     SignalRecord,
     SwingRunner,
 )
+from rhythm.fundamentals.types import FundamentalSnapshot
 from rhythm.marketdata.types import Bar, Interval
 from rhythm.risk.engine import InstrumentFacts
 from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
@@ -66,6 +67,10 @@ class BacktestConfig:
     # Swing: corporate events per instrument (point-in-time via known_at). An instrument
     # missing here has no event coverage, so R18 blocks its swing entries (fail closed).
     events: Mapping[InstrumentKey, tuple[CorporateEvent, ...]] = field(default_factory=dict)
+    # Long-term: published fundamentals per instrument (point-in-time via known_at).
+    fundamentals: Mapping[InstrumentKey, tuple[FundamentalSnapshot, ...]] = field(
+        default_factory=dict
+    )
 
     def facts(self, key: InstrumentKey) -> InstrumentFacts:
         return self.instruments.get(key) or InstrumentFacts(
@@ -132,6 +137,7 @@ def run_hash(strategy: Strategy, cfg: BacktestConfig, dhash: str) -> str:
         "fill_model": cfg.fill_model.describe(),
         "risk": cfg.describe_risk(),
         "events": _events_digest(cfg.events),
+        "fundamentals": _fundamentals_digest(cfg.fundamentals),
         "data_hash": dhash,
     }
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
@@ -148,8 +154,17 @@ def _events_digest(events: Mapping[InstrumentKey, tuple[CorporateEvent, ...]]) -
     return h.hexdigest()
 
 
+def _fundamentals_digest(f: Mapping[InstrumentKey, tuple[FundamentalSnapshot, ...]]) -> str:
+    h = hashlib.sha256()
+    for key in sorted(f):
+        for s in f[key]:
+            m = ",".join(f"{k}={v}" for k, v in sorted(s.metrics.items()))
+            h.update(f"{key}|{s.period_end}|{s.known_at.isoformat()}|{s.source}|{m}\n".encode())
+    return h.hexdigest()
+
+
 def expected_interval(strategy: Strategy) -> Interval:
-    return Interval.D1 if strategy.horizon is Horizon.SWING else Interval.M5
+    return Interval.M5 if strategy.horizon is Horizon.INTRADAY else Interval.D1
 
 
 def _validate(cfg: BacktestConfig, bars: Mapping[InstrumentKey, Sequence[Bar]]) -> None:
@@ -197,9 +212,10 @@ def run_backtest(
         ledger_allocation=cfg.initial_capital * cfg.ledger_allocation_pct,
         instruments={k: cfg.facts(k) for k in cfg.symbols},
         events={k: tuple(v) for k, v in cfg.events.items()},
+        fundamentals={k: tuple(v) for k, v in cfg.fundamentals.items()},
     )
     runner_cls: type[BaseRunner] = (
-        SwingRunner if strategy.horizon is Horizon.SWING else IntradayRunner
+        IntradayRunner if strategy.horizon is Horizon.INTRADAY else SwingRunner
     )
     runner = runner_cls(strategy=strategy, book=book, calendar=calendar, env=env)
 
@@ -274,6 +290,7 @@ def run_splits(
             ledger_allocation_pct=cfg.ledger_allocation_pct,
             instruments=cfg.instruments,
             events=cfg.events,
+            fundamentals=cfg.fundamentals,
         )
         out[s.name] = run_backtest(strategy, sub, bars, calendar=calendar)
     return out
@@ -391,6 +408,8 @@ def compute_metrics(
         if bench
         else None,
         "exit_reasons": dict(_count(t.exit_reason for t in trades)),
+        # Long-term runs often end with positions still held (not counted as trades).
+        "positions_open_at_end": sum(1 for p in book.positions.values() if p.quantity > 0),
     }
 
 

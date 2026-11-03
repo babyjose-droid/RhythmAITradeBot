@@ -282,7 +282,7 @@ def test_review_threshold() -> None:
 def test_decision_serialises() -> None:
     d = evaluate(prop(), state())
     out = d.as_dict()
-    assert out["policy_version"] == DEFAULT_POLICY.version and len(out["checks"]) == 19
+    assert out["policy_version"] == DEFAULT_POLICY.version and len(out["checks"]) == 20
     assert state().as_dict()["instrument"]["lot_size"] == "1"
 
 

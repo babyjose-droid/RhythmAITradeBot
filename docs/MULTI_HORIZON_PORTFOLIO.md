@@ -17,6 +17,8 @@
 
 **Still to build.** Explicit netting of offsetting intents across horizons in the same cycle (§3 step 2). Today each ledger acts independently, and the consolidated checks catch concentration.
 
+**Phase 6:** the LONG_TERM ledger trades through the same daily runner as SWING. Long-term sizing uses target weights of the ledger allocation (band 5–15 %), capped by R7; reviews can ADD or REDUCE within the band. Ledgers still share account cash.
+
 ## 1. Model
 
 - Three virtual ledgers per account kind (PAPER now; LIVE later): `INTRADAY`, `SWING`, `LONG_TERM`, each with allocated capital, positions, realised/unrealised P&L and theses.

@@ -77,3 +77,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 details summary { cursor: pointer; }
 .danger { background: var(--bad); color: #fff; border-color: var(--bad); }
 textarea { font: inherit; width: 100%; min-height: 48px; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+.band { position: relative; height: 18px; min-width: 220px; background: var(--line); border-radius: 4px; }
+.band-range { position: absolute; top: 0; bottom: 0; background: #cfe8d6; border-radius: 4px; }
+.band-target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ok); }
+.band-weight { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid #fff; }
+.band-within { background: var(--ok); }
+.band-below, .band-above { background: var(--warn); }
+.band-label { position: absolute; left: 0; top: 20px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+td:has(.band) { padding-bottom: 22px; }

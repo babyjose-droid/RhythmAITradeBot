@@ -26,7 +26,7 @@ from rhythm.core.market import Horizon, InstrumentKey
 from rhythm.execution.costs import CostModel, Product, Side
 from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
 
-ENGINE_VERSION = "risk-engine-1.1"
+ENGINE_VERSION = "risk-engine-1.2"
 ORDER_MODES = frozenset({"PAPER", "BACKTEST", "SIMULATION"})  # LIVE is never accepted
 
 
@@ -113,6 +113,8 @@ class RiskState:
     # from the decision date to the next event known at decision time (None: none known).
     event_calendar_synced_at: datetime | None = None
     days_to_next_event: int | None = None
+    # R21 (long-term): when the latest fundamentals used for the decision were published.
+    fundamentals_published_at: datetime | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -208,6 +210,7 @@ _NAMES = {
     "R18": "overnight / event gate",
     "R19": "correlation cluster",
     "R20": "ledger owns the quantity it sells",
+    "R21": "fundamentals evidence is current",
 }
 
 
@@ -336,8 +339,8 @@ def r17_window(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
 def r18_event_gate(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
     if p.horizon is Horizon.INTRADAY:
         return _r("R18", CheckStatus.SKIP, "no overnight holding for intraday")
-    if p.horizon is not Horizon.SWING:
-        return _r("R18", CheckStatus.FAIL, f"no event policy for {p.horizon.value} yet (Phase 6)")
+    if p.horizon not in (Horizon.SWING, Horizon.LONG_TERM):  # pragma: no cover - exhaustive
+        return _r("R18", CheckStatus.FAIL, f"no event policy for {p.horizon.value}")
     if s.event_calendar_synced_at is None:
         return _r("R18", CheckStatus.FAIL, "event calendar never synced for this instrument")
     ref = s.evaluated_at or s.as_of
@@ -352,6 +355,18 @@ def r18_event_gate(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResu
         )
     nxt = "none known" if s.days_to_next_event is None else f"in {s.days_to_next_event} days"
     return _r("R18", CheckStatus.PASS, f"next event {nxt}")
+
+
+def r21_fundamentals(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
+    if p.horizon is not Horizon.LONG_TERM:
+        return _r("R21", CheckStatus.SKIP, "fundamentals gate applies to long-term orders")
+    if s.fundamentals_published_at is None:
+        return _r("R21", CheckStatus.FAIL, "no published fundamentals for this instrument")
+    ref = s.evaluated_at or s.as_of
+    age = (ref - s.fundamentals_published_at).days
+    if age > pol.max_fundamentals_age_days:
+        return _r("R21", CheckStatus.FAIL, f"latest fundamentals published {age} days ago")
+    return _r("R21", CheckStatus.PASS, f"published {age} days ago")
 
 
 def r19_correlation(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
@@ -375,8 +390,10 @@ def _cost_per_share(p: OrderProposal, costs: CostModel) -> Decimal:
 def r7_planned_loss(
     p: OrderProposal, s: RiskState, pol: RiskPolicy, costs: CostModel
 ) -> CheckResult:
+    if p.horizon is Horizon.LONG_TERM:
+        return _r7_allocation_band(p, s, pol)
     pct = pol.risk_per_trade(p.horizon)
-    if pct is None:
+    if pct is None:  # pragma: no cover - every other horizon has a limit
         return _r("R7", CheckStatus.FAIL, f"no per-trade risk limit for {p.horizon.value}")
     if p.stop is None or p.stop >= p.ref_price:
         return _r("R7", CheckStatus.FAIL, "stop missing or not below the entry")
@@ -389,6 +406,22 @@ def r7_planned_loss(
         CheckStatus.PASS,
         f"budget {budget:.2f}, risk/share {per_share:.4f} incl. est. costs",
         max_qty=max_qty,
+    )
+
+
+def _r7_allocation_band(p: OrderProposal, s: RiskState, pol: RiskPolicy) -> CheckResult:
+    """Long-term sizing: the position may not exceed the band maximum of its ledger."""
+    if s.ledger_allocation is None or s.ledger_allocation <= 0:
+        return _r("R7", CheckStatus.FAIL, "ledger allocation unknown")
+    if p.quantity is None:
+        return _r("R7", CheckStatus.FAIL, "long-term orders must state a quantity (target weight)")
+    held = s.ledger_position_qty * p.ref_price
+    room = pol.long_term_max_weight * s.ledger_allocation - held
+    return _r(
+        "R7",
+        CheckStatus.PASS,
+        f"band max {pol.long_term_max_weight:.0%} of {s.ledger_allocation:.0f}, room {room:.2f}",
+        max_qty=_qty(room, p, s),
     )
 
 
@@ -471,7 +504,7 @@ def _evaluate(p: OrderProposal, s: RiskState, pol: RiskPolicy, costs: CostModel)
 
     if p.intent is Intent.REDUCE:
         why = "not applied to risk-reducing orders"
-        skipped = ("R3", "R4", "R5", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14")
+        skipped = ("R3", "R4", "R5", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R21")
         checks = [
             run("R1", r1_mode),
             run("R2", r2_controls),
@@ -499,6 +532,7 @@ def _evaluate(p: OrderProposal, s: RiskState, pol: RiskPolicy, costs: CostModel)
         run("R17", r17_window),
         run("R18", r18_event_gate),
         run("R19", r19_correlation),
+        run("R21", r21_fundamentals),
     ]
     if p.side is not Side.BUY:
         gating.append(_r("R20", CheckStatus.FAIL, "only long entries are supported"))

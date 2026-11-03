@@ -30,6 +30,7 @@ from rhythm.events.types import CorporateEvent
 from rhythm.execution.book import Fill, Order, PaperBook
 from rhythm.execution.costs import Product, Side
 from rhythm.execution.fills import OrderType
+from rhythm.fundamentals.types import FundamentalSnapshot, known_as_of
 from rhythm.marketdata.types import Bar, Interval
 from rhythm.orders.state import TERMINAL, OrderState
 from rhythm.risk import engine
@@ -48,6 +49,7 @@ from rhythm.strategies.base import (
 MAX_HISTORY = 400
 ADV_LOOKBACK_SESSIONS = 20
 PROTECTIVE = frozenset({"stop", "target", "square_off"})
+RISK_REDUCING = PROTECTIVE | {"exit", "reduce"}  # not counted by R14
 
 
 @dataclass
@@ -68,6 +70,8 @@ class RiskEnvironment:
     # Swing (R18): known corporate events per instrument and the calendar's last sync time.
     events: dict[InstrumentKey, tuple[CorporateEvent, ...]] = field(default_factory=dict)
     event_synced_at: dict[InstrumentKey, datetime] = field(default_factory=dict)
+    # Long-term: published fundamentals per instrument (point-in-time via known_at).
+    fundamentals: dict[InstrumentKey, tuple[FundamentalSnapshot, ...]] = field(default_factory=dict)
     # Wall-clock time of a PAPER cycle (R3 compares reconciliation age against it).
     evaluated_at: datetime | None = None
 
@@ -182,7 +186,7 @@ class BaseRunner:
             for o in self.book.orders.values()
             if o.state not in TERMINAL
             and o.state is not OrderState.RECONCILED
-            and o.purpose not in PROTECTIVE
+            and o.purpose not in RISK_REDUCING
         ]
 
     def risk_state(self, p: OrderProposal) -> RiskState:
@@ -254,6 +258,10 @@ class BaseRunner:
             event_calendar_synced_at=env.event_synced_at.get(key)
             or (p.at if env.book_is_truth and key in env.events else None),
             days_to_next_event=None if next_event is None else (next_event.event_date - day).days,
+            fundamentals_published_at=max(
+                (f.known_at for f in env.fundamentals.get(key, ()) if f.known_at <= p.at),
+                default=None,
+            ),
             unknown_orders_on_instrument=sum(
                 1
                 for o in self.book.orders.values()
@@ -267,25 +275,51 @@ class BaseRunner:
         return state, decision
 
     # ------------------------------------------------------------------ signals
+    def _weight_quantity(self, sig: Signal) -> int | None:
+        """Shares needed to move this position to ``sig.target_weight`` of ledger capital."""
+        cap = self.env.ledger_allocation
+        if sig.target_weight is None or cap is None or sig.ref_price <= 0:
+            return None
+        facts = self.env.instruments.get(sig.key)
+        lot = facts.lot_size if facts else 1
+        target = engine.floor_lots(sig.target_weight * cap / sig.ref_price, lot)
+        held = self.book.position(sig.key).quantity
+        if sig.type in (SignalType.ENTER_LONG, SignalType.ADD_LONG):
+            return max(0, target - held)
+        return max(0, held - target)
+
     def _handle(
         self, sig: Signal, diag: dict[str, Any], quote_status: str, day: date
     ) -> SignalRecord:
         key = sig.key
         idem = f"{sig.strategy}:{sig.version}:{key}:{sig.at.isoformat()}:{sig.type.value}"
-        entry = sig.type is SignalType.ENTER_LONG
+        buy = sig.type in (SignalType.ENTER_LONG, SignalType.ADD_LONG)
+        purpose = {
+            SignalType.ENTER_LONG: "entry",
+            SignalType.ADD_LONG: "add",
+            SignalType.REDUCE_LONG: "reduce",
+            SignalType.EXIT_LONG: "exit",
+        }[sig.type]
         sig = self._snap_to_tick(sig)
+        held = self.book.position(key).quantity
+        if sig.type is SignalType.EXIT_LONG:
+            qty: int | None = held
+        elif sig.target_weight is not None:
+            qty = self._weight_quantity(sig)
+        else:
+            qty = None  # intraday/swing entries: the risk engine sizes them (R7)
         proposal = OrderProposal(
             key=key,
             horizon=sig.horizon,
-            side=Side.BUY if entry else Side.SELL,
-            intent=Intent.OPEN if entry else Intent.REDUCE,
+            side=Side.BUY if buy else Side.SELL,
+            intent=Intent.OPEN if buy else Intent.REDUCE,
             at=sig.at,
             ref_price=sig.ref_price,
             strategy=sig.strategy,
             idempotency_key=idem,
-            stop=sig.stop if entry else None,
-            quantity=None if entry else self.book.position(key).quantity,
-            purpose="entry" if entry else "exit",
+            stop=sig.stop if buy else None,
+            quantity=qty,
+            purpose=purpose,
         )
         state, decision = self.assess(proposal, quote_status)
         if not decision.accepted:
@@ -296,35 +330,25 @@ class BaseRunner:
                 else DecisionState.REJECTED_BY_RISK
             )
             return SignalRecord(sig, dstate, decision, None, diag)
-        if entry:
-            order, created = self.book.propose(
-                key=key,
-                side=Side.BUY,
-                order_type=OrderType.MARKET,
-                quantity=decision.quantity,
-                at=sig.at,
-                idempotency_key=idem,
-                strategy=sig.strategy,
-                purpose="entry",
-                product=self.product,
-            )
+        if not buy:
+            for o in self.book.working_orders(key):
+                self.book.cancel(o, sig.at, f"strategy {purpose}")
+        order, created = self.book.propose(
+            key=key,
+            side=Side.BUY if buy else Side.SELL,
+            order_type=OrderType.MARKET,
+            quantity=decision.quantity,
+            at=sig.at,
+            idempotency_key=idem,
+            strategy=sig.strategy,
+            purpose=purpose,
+            product=self.product,
+        )
+        if sig.type is SignalType.ENTER_LONG:
             pos = self.book.position(key)
             pos.stop, pos.target = sig.stop, sig.target
+        if buy:
             self.entries[(key, day)] += 1
-        else:
-            for o in self.book.working_orders(key):
-                self.book.cancel(o, sig.at, "strategy exit")
-            order, created = self.book.propose(
-                key=key,
-                side=Side.SELL,
-                order_type=OrderType.MARKET,
-                quantity=decision.quantity,
-                at=sig.at,
-                idempotency_key=idem,
-                strategy=sig.strategy,
-                purpose="exit",
-                product=self.product,
-            )
         self.risk_log.append(RiskRecord(proposal, state, decision, order.id))
         if created:
             self.book.transition(order, OrderState.RISK_CHECKED, sig.at, **_summary(decision))
@@ -478,7 +502,10 @@ class IntradayRunner(BaseRunner):
 
 @dataclass
 class SwingRunner(BaseRunner):
-    """Daily bars; positions held across sessions with GTC-style stop/target protection.
+    """Daily bars (swing and long-term); positions held across sessions.
+
+    Swing positions keep GTC-style stop/target protection; long-term positions have no
+    stop (their thesis and allocation band govern exits).
 
     A daily bar's decision time is that session's close. Orders decided at a close fill at
     the next session's open. Unfilled entry quantity expires after that next session.
@@ -497,7 +524,7 @@ class SwingRunner(BaseRunner):
         self.start_day(day)
         fills = self._fill_then_protect(bar)
         for o in self.book.working_orders(key):
-            if o.purpose == "entry" and o.created_at < bar.start:
+            if o.purpose in ("entry", "add") and o.created_at < bar.start:
                 o.reason = "entry not filled by the next session"
                 self.book.transition(o, OrderState.EXPIRED, end, reason=o.reason)
         hist = self.history[key]
@@ -519,6 +546,8 @@ class SwingRunner(BaseRunner):
             self.entries[(key, day)],
             events=events,
             bar_end=self.bar_end,
+            fundamentals=tuple(known_as_of(self.env.fundamentals.get(key, ()), end)),
+            capital=self.env.ledger_allocation,
         )
         evaluation = self.strategy.evaluate(ctx)
         self.last_diagnostics[key] = evaluation.diagnostics
@@ -550,3 +579,6 @@ def _summary(d: RiskDecision) -> dict[str, Any]:
         "failed": [c.code for c in d.failed],
         "reduced_by": [c.code for c in d.checks if c.status.value == "REDUCE"],
     }
+
+
+DailyRunner = SwingRunner  # used for both SWING and LONG_TERM ledgers

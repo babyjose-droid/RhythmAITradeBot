@@ -124,7 +124,14 @@ def record_signals(
                     from_status=None,
                     to_status="PENDING_ENTRY",
                     reason="entry order created",
-                    detail={"order_id": rec.order_id, "risk": rec.risk.outcome.value},
+                    detail={
+                        "order_id": rec.order_id,
+                        "risk": rec.risk.outcome.value,
+                        "target_weight": None if s.target_weight is None else str(s.target_weight),
+                        "key_metrics": _jsonable(dict(s.thesis.get("key_metrics", {}))),
+                        "evidence": [_jsonable(dict(x)) for x in s.thesis.get("evidence", [])],
+                        "allocation_band": _jsonable(dict(s.thesis.get("allocation_band", {}))),
+                    },
                 )
             )
             created += 1
@@ -140,6 +147,23 @@ def record_signals(
                         {"exit_order_id": rec.order_id, "decided_at": s.at.isoformat()},
                     )
                     invalidated += 1
+        elif s.type in (SignalType.ADD_LONG, SignalType.REDUCE_LONG) and rec.order_id:
+            for th in open_theses(session, account_id, horizon, s.key):
+                if th.status == "OPEN":  # rebalancing within an intact thesis
+                    _event(
+                        session,
+                        th,
+                        "OPEN",
+                        "; ".join(s.reasons) or s.type.value.lower(),
+                        at,
+                        {
+                            "action": s.type.value,
+                            "order_id": rec.order_id,
+                            "target_weight": None
+                            if s.target_weight is None
+                            else str(s.target_weight),
+                        },
+                    )
     session.flush()
     return created, invalidated
 
@@ -201,10 +225,28 @@ def sync(
             out["closed"] += 1
             continue
         if key in diagnostics:
+            diag = _jsonable(diagnostics[key])
             th.last_checked_at = at
-            th.last_check = _jsonable(diagnostics[key])
+            th.last_check = diag
             th.next_review_at = next_review_at
             out["checked"] += 1
+            if diag.get("reviewed") and th.status == "OPEN":
+                # Scheduled / results-triggered review: valuation history, append-only.
+                _event(
+                    session,
+                    th,
+                    "OPEN",
+                    "review: " + str(diag.get("action", "HOLD")).lower(),
+                    at,
+                    {
+                        "metrics": diag.get("metrics", {}),
+                        "weight": diag.get("weight"),
+                        "band": diag.get("band"),
+                        "latest_period": diag.get("latest_period"),
+                        "new_results": diag.get("new_results"),
+                    },
+                )
+                out["reviewed"] = out.get("reviewed", 0) + 1
     session.flush()
     return out
 

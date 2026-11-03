@@ -26,6 +26,13 @@
 - **Theses:** each entry has a thesis (`PENDING_ENTRY → OPEN → INVALIDATED → CLOSED`), checked every session, with append-only history. API: `GET /v1/theses`, `GET /v1/theses/{id}`.
 - **Event calendar:** sync with `POST /v1/events/sync`. R18 blocks entries without a sync in the last 7 days, or when an event is ≤ 3 days away.
 
+## Long-term (Phase 6)
+
+- **Running a cycle:** `strategy: long_term_quality_value`, after the close, on a LONG_TERM watchlist. Sync fundamentals first (`POST /v1/fundamentals/sync`); R21 blocks entries without them.
+- **Orders:** sized from a target weight of the LONG_TERM ledger (10 %), capped by R7 at 15 %. No stop/target orders. Unfilled entry/add quantity expires after one session.
+- **Theses:** entry thesis with invalidation rules, allocation band and key metrics with provenance. Reviews (every 20 sessions or on new results) and rebalances are recorded as OPEN→OPEN events.
+- **Why / why not:** the cycle response has `diagnostics` per instrument (entry checks, metrics, weight, band, action).
+
 ## Still to do
 
 - Latency and rejection simulation (price band, funds) — Phase 4/9.

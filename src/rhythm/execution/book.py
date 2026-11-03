@@ -300,7 +300,15 @@ class PaperBook:
         """Fill working orders for ``bar.key`` against this bar (protective stop before target)."""
         made: list[Fill] = []
         capacity = self.fill_model.available(bar)
-        priority = {"stop": 0, "square_off": 1, "exit": 1, "entry": 2, "target": 3}
+        priority = {
+            "stop": 0,
+            "square_off": 1,
+            "exit": 1,
+            "reduce": 1,
+            "entry": 2,
+            "add": 2,
+            "target": 3,
+        }
         candidates = [
             o for o in self.working_orders(bar.key) if purposes is None or o.purpose in purposes
         ]

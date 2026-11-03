@@ -35,7 +35,7 @@ export default function SwingWorkspace() {
     [wlId],
   );
   const theses = useData(
-    () => (acctId == null ? Promise.resolve([]) : api.get<Thesis[]>(`/v1/theses?account_id=${acctId}&limit=50`)),
+    () => (acctId == null ? Promise.resolve([]) : api.get<Thesis[]>(`/v1/theses?account_id=${acctId}&horizon=SWING&limit=50`)),
     [acctId],
   );
   const orders = useData(

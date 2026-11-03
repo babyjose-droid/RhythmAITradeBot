@@ -1,4 +1,4 @@
-"""Corporate-event calendar and swing theses.
+"""Corporate-event calendar, company fundamentals, and multi-day theses (swing, long-term).
 
 Swing cycles themselves use ``POST /v1/paper/accounts/{id}/cycle`` (or the research cycle)
 with ``strategy: swing_trend_pullback``.
@@ -7,6 +7,7 @@ with ``strategy: swing_trend_pullback``.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -16,12 +17,15 @@ from sqlalchemy import select
 from rhythm.api.deps import SessionDep, StateDep, parse_key
 from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.core.clock import EXCHANGE_TZ
-from rhythm.core.market import InstrumentKey
+from rhythm.core.market import Horizon, InstrumentKey
 from rhythm.db.models import ThesisEventRow, ThesisRow
 from rhythm.events import store as event_store
 from rhythm.events.types import CorporateEvent, EventKind
+from rhythm.fundamentals import store as fundamentals_store
+from rhythm.fundamentals.types import derive, known_as_of
 from rhythm.instruments import watchlists as wl_svc
 from rhythm.instruments.registry import MockDataNotAllowedError
+from rhythm.marketdata.provider import MarketDataUnavailableError
 from rhythm.paper import theses
 
 router = APIRouter(tags=["swing"])
@@ -148,6 +152,7 @@ def list_theses(
     session: SessionDep,
     account_id: int,
     status: Literal["PENDING_ENTRY", "OPEN", "INVALIDATED", "CLOSED"] | None = None,
+    horizon: Horizon | None = None,
     limit: int = Query(100, ge=1, le=1000),
 ) -> list[dict[str, Any]]:
     stmt = (
@@ -158,6 +163,8 @@ def list_theses(
     )
     if status:
         stmt = stmt.where(ThesisRow.status == status)
+    if horizon is not None:
+        stmt = stmt.where(ThesisRow.horizon == horizon.value)
     return [theses.thesis_out(t) for t in session.execute(stmt).scalars()]
 
 
@@ -174,3 +181,82 @@ def get_thesis(thesis_id: int, session: SessionDep) -> dict[str, Any]:
         ).scalars()
     )
     return theses.thesis_out(th, events)
+
+
+# ---------------------------------------------------------------------------- fundamentals
+@router.post("/v1/fundamentals/sync")
+def sync_fundamentals(
+    body: SyncIn, state: StateDep, session: SessionDep, idem: IdempotencyKey = None
+) -> Any:
+    if state.fundamentals is None:
+        raise HTTPException(
+            503, "no fundamentals provider configured (RHYTHM_FUNDAMENTALS_PROVIDER)"
+        )
+    provider = state.fundamentals
+    keys = _watchlist_keys(session, body.watchlist_id)
+
+    def produce() -> dict[str, Any]:
+        try:
+            added = fundamentals_store.sync(
+                session,
+                provider,
+                keys,
+                now=state.clock.now(),
+                environment=state.settings.environment,
+                audit=state.audit,
+                actor_id=state.settings.local_actor_id,
+            )
+        except MockDataNotAllowedError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"source": provider.origin.value, "added": added, "instruments": len(keys)}
+
+    return run_idempotent(
+        session,
+        key=idem,
+        endpoint="POST /v1/fundamentals/sync",
+        body=body.model_dump(),
+        produce=produce,
+        required=False,
+    )
+
+
+@router.get("/v1/fundamentals/{exchange}/{symbol}")
+def get_fundamentals(
+    exchange: str,
+    symbol: str,
+    state: StateDep,
+    session: SessionDep,
+    quarters: int = Query(8, ge=1, le=40),
+) -> dict[str, Any]:
+    """Published quarters (point-in-time as of now) and derived metrics with formulas."""
+    key = parse_key(exchange, symbol)
+    now = state.clock.now()
+    snaps = known_as_of(fundamentals_store.known(session, key, now), now)
+    price: Decimal | None = None
+    price_source = "unavailable"
+    if state.market_data is not None:
+        try:
+            q = state.market_data.latest_quote(key)
+        except MarketDataUnavailableError:
+            q = None
+        if q is not None:
+            price, price_source = q.ltp, q.source.value
+    derived = derive(snaps, price) if price is not None else {}
+    return {
+        "instrument": str(key),
+        "as_of": now,
+        "price": None if price is None else str(price),
+        "price_source": price_source,
+        "is_mock": any(s.is_mock for s in snaps),
+        "quarters": [
+            {
+                "period_end": s.period_end,
+                "known_at": s.known_at,
+                "source": s.source,
+                "source_ref": s.source_ref,
+                "metrics": {k: str(v) for k, v in s.metrics.items()},
+            }
+            for s in snaps[-quarters:]
+        ],
+        "derived": {k: v.as_dict() for k, v in derived.items()},
+    }

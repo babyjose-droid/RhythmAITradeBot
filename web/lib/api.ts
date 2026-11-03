@@ -272,15 +272,32 @@ export interface Thesis {
   closed_at: string | null;
   close_reason: string | null;
   data_is_mock: boolean;
-  events?: { at: string; from: string | null; to: string; reason: string }[];
+  events?: { at: string; from: string | null; to: string; reason: string; detail: Record<string, unknown> }[];
 }
 
 export interface CycleResult {
   mode: string;
   horizon: string;
+  diagnostics: Record<string, Record<string, unknown>>;
   new_orders: number;
   new_fills: number;
   signals: { instrument: string; type: string; decision: string; failed_checks: string[]; reasons: string[] }[];
   skipped: Record<string, string>;
   theses: Record<string, number>;
+}
+
+export interface DerivedMetric {
+  value: string | null;
+  formula: string;
+  inputs: string[];
+}
+
+export interface Fundamentals {
+  instrument: string;
+  as_of: string;
+  price: string | null;
+  price_source: string;
+  is_mock: boolean;
+  quarters: { period_end: string; known_at: string; source: string; source_ref: string; metrics: Record<string, string> }[];
+  derived: Record<string, DerivedMetric>;
 }

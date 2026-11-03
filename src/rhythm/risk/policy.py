@@ -15,7 +15,7 @@ from typing import Any
 from rhythm.core.errors import RhythmError
 from rhythm.core.market import Horizon
 
-DEFAULT_VERSION = "paper-default-2"
+DEFAULT_VERSION = "paper-default-3"
 
 
 class PolicyValidationError(RhythmError):
@@ -35,6 +35,7 @@ _BOUNDS: dict[str, tuple[Decimal, Decimal]] = {
     "max_sector_pct": _pct("0.05", "1"),
     "max_adv_participation": _pct("0.0001", "0.10"),
     "cash_buffer_pct": _pct("0", "0.05"),
+    "long_term_max_weight": _pct("0.01", "0.50"),
 }
 _INT_BOUNDS: dict[str, tuple[int, int]] = {
     "max_open_orders": (1, 100),
@@ -43,6 +44,7 @@ _INT_BOUNDS: dict[str, tuple[int, int]] = {
     "reconciliation_max_age_seconds": (5, 3600),
     "event_blackout_days": (0, 30),
     "event_calendar_max_age_days": (1, 30),
+    "max_fundamentals_age_days": (30, 400),
 }
 
 
@@ -65,6 +67,8 @@ class RiskPolicy:
     allowed_instrument_types: tuple[str, ...] = ("EQ",)  # R5
     event_blackout_days: int = 3  # R18: no new swing entry this close to a known event
     event_calendar_max_age_days: int = 7  # R18: calendar must have been synced recently
+    long_term_max_weight: Decimal = Decimal("0.15")  # R7 (long-term): of the ledger's capital
+    max_fundamentals_age_days: int = 200  # R21: latest results must be this recent
     review_above_order_value: Decimal | None = None  # REQUIRES_REVIEW above this value
     ledger_allocation_pct: dict[str, Decimal] = field(
         default_factory=lambda: {

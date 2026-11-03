@@ -43,6 +43,8 @@ from rhythm.db.models import (
 from rhythm.events import store as event_store
 from rhythm.events.types import CorporateEvent
 from rhythm.execution.book import ACCOUNT_KIND
+from rhythm.fundamentals import store as fundamentals_store
+from rhythm.fundamentals.types import FundamentalSnapshot
 from rhythm.instruments import watchlists as wl_svc
 from rhythm.marketdata.bars import get_bars
 from rhythm.marketdata.provider import MarketDataUnavailableError
@@ -155,8 +157,11 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
                 422, f"no {interval.value} bars found for the requested symbols/period"
             )
         events: dict[InstrumentKey, tuple[CorporateEvent, ...]] = {}
-        if strat.horizon is Horizon.SWING:
+        fundamentals: dict[InstrumentKey, tuple[FundamentalSnapshot, ...]] = {}
+        if strat.horizon in (Horizon.SWING, Horizon.LONG_TERM):
             events = _backtest_events(state, session, keys, body)
+        if strat.horizon is Horizon.LONG_TERM:
+            fundamentals = _backtest_fundamentals(state, session, keys, body)
         cfg = BacktestConfig(
             symbols=keys,
             start=body.start,
@@ -164,6 +169,7 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
             interval=interval,
             initial_capital=body.initial_capital,
             events=events,
+            fundamentals=fundamentals,
         )
         results: dict[str, BacktestResult] = {
             FULL: run_backtest(strat, cfg, bars, calendar=state.calendar)
@@ -204,6 +210,20 @@ def _backtest_events(
         elif event_store.last_sync(session, k, state.clock.now()) is not None:
             far = datetime.max.replace(tzinfo=UTC)
             out[k] = tuple(event_store.known_events(session, k, far, start, end))
+    return out
+
+
+def _backtest_fundamentals(
+    state: StateDep, session: SessionDep, keys: tuple[InstrumentKey, ...], body: BacktestIn
+) -> dict[InstrumentKey, tuple[FundamentalSnapshot, ...]]:
+    """Published quarters for a long-term backtest (filtered point-in-time by the runner)."""
+    end = body.end.astimezone(EXCHANGE_TZ).date()
+    out: dict[InstrumentKey, tuple[FundamentalSnapshot, ...]] = {}
+    for k in keys:
+        if state.fundamentals is not None:
+            out[k] = tuple(state.fundamentals.snapshots(k, fundamentals_store.HISTORY_START, end))
+        else:
+            out[k] = tuple(fundamentals_store.known(session, k, body.end))
     return out
 
 

@@ -67,11 +67,12 @@ export default function Backtests() {
             value={strategy}
             onChange={(e) => {
               setStrategy(e.target.value);
-              setDays(e.target.value === "swing_trend_pullback" ? 365 : 30);
+              setDays(e.target.value === "intraday_orb_vwap" ? 30 : 365);
             }}
           >
             <option value="intraday_orb_vwap">intraday_orb_vwap (5-minute)</option>
             <option value="swing_trend_pullback">swing_trend_pullback (daily)</option>
+            <option value="long_term_quality_value">long_term_quality_value (daily + fundamentals)</option>
           </select>
         </label>
         <label>
