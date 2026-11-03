@@ -34,6 +34,7 @@ from rhythm.core.clock import EXCHANGE_TZ, Clock
 from rhythm.core.errors import RhythmError
 from rhythm.core.market import DataOrigin, Exchange, Horizon, InstrumentKey
 from rhythm.db.models import (
+    ApprovalRow,
     FillRow,
     OrderEventRow,
     OrderRow,
@@ -66,14 +67,15 @@ from rhythm.marketdata.freshness import (
 )
 from rhythm.marketdata.provider import MarketDataProvider, MarketDataUnavailableError
 from rhythm.marketdata.types import Interval
+from rhythm.notifications.service import notify
 from rhythm.orders.state import TERMINAL, OrderState
-from rhythm.paper import theses
+from rhythm.paper import approvals, theses
 from rhythm.portfolio import service as portfolio
 from rhythm.research.packet import CandidateView, build_packet
 from rhythm.research.service import ResearchService
 from rhythm.risk.engine import InstrumentFacts, Intent, OrderProposal, RiskDecision
 from rhythm.risk.policy import RiskPolicy
-from rhythm.strategies.base import DecisionState, Signal, Strategy, params_hash
+from rhythm.strategies.base import DecisionState, Signal, SignalType, Strategy, params_hash
 from rhythm.strategies.intraday_orb import IntradayOrbVwap
 
 DISABLED_MSG = "PAPER cycles need RHYTHM_TRADING_MODE=PAPER and RHYTHM_FEATURES__PAPER_TRADING=true"
@@ -371,6 +373,17 @@ def _reconcile(
         session, audit, acct=acct, result=result, at=at, trigger=trigger, actor_id=actor_id
     )
     if not result.ok:
+        notify(
+            session,
+            kind="reconciliation_break",
+            severity="critical",
+            title=f"Reconciliation break on PAPER account {acct.id}",
+            body=f"{len(result.diffs)} difference(s) found ({trigger}); kill switch activated.",
+            at=at,
+            link="/audit",
+            subject_type="paper_account",
+            subject_id=str(acct.id),
+        )
         controls.set_kill_switch(
             session,
             audit,
@@ -503,6 +516,16 @@ def _open_ledger(
     return _Ledger(acct, book, env, ctl, risk_policy, persist)
 
 
+@dataclass(frozen=True)
+class _Review:
+    """What the approval queue needs to file a REQUIRES_REVIEW candidate."""
+
+    calendar: SessionCalendar
+    at: datetime
+    audit: AuditLog
+    actor_id: str
+
+
 def _record_signal_rows(
     session: Session,
     result: CycleResult,
@@ -512,18 +535,36 @@ def _record_signal_rows(
     lg: _Ledger,
     strategy: Strategy,
     mock: bool,
+    review: _Review | None = None,
 ) -> None:
     for rec in recs:
-        session.add(
-            _signal_row(
-                rec,
-                context="PAPER" if lg.persist else "RESEARCH",
-                account_id=lg.acct.id if lg.acct is not None else None,
-                strategy=strategy,
-                persist_orders=lg.persist,
-                data_is_mock=mock,
-            )
+        row = _signal_row(
+            rec,
+            context="PAPER" if lg.persist else "RESEARCH",
+            account_id=lg.acct.id if lg.acct is not None else None,
+            strategy=strategy,
+            persist_orders=lg.persist,
+            data_is_mock=mock,
         )
+        session.add(row)
+        approval_id: int | None = None
+        if (
+            review is not None
+            and lg.acct is not None
+            and rec.decision is DecisionState.REQUIRES_REVIEW
+        ):
+            session.flush()
+            a = approvals.queue(
+                session,
+                rec,
+                row,
+                account_id=lg.acct.id,
+                calendar=review.calendar,
+                at=review.at,
+                audit=review.audit,
+                actor_id=review.actor_id,
+            )
+            approval_id = a.id if a is not None else None
         result.signals.append(
             {
                 "instrument": name,
@@ -534,6 +575,7 @@ def _record_signal_rows(
                 "failed_checks": [c.code for c in rec.risk.failed],
                 "reasons": list(rec.signal.reasons),
                 "order_id": rec.order_id if lg.persist else None,
+                "approval_id": approval_id,
                 "research": None
                 if rec.advice is None
                 else {
@@ -717,7 +759,14 @@ def run_cycle(
             qstatus = status.value if i == len(new) - 1 else "CATCH_UP"
             _, recs = runner.on_bar(bar, quote_status=qstatus)
             _record_signal_rows(
-                session, result, recs, name=name, lg=lg, strategy=strategy, mock=mock
+                session,
+                result,
+                recs,
+                name=name,
+                lg=lg,
+                strategy=strategy,
+                mock=mock,
+                review=_Review(calendar, now, audit, actor_id),
             )
         result.processed_bars[name] = len(new)
         if bars:
@@ -852,7 +901,14 @@ def _run_daily(
                 runner.start_day(bday)
             _, recs = runner.on_bar(bar, quote_status=qstatus)
             _record_signal_rows(
-                session, result, recs, name=name, lg=lg, strategy=strategy, mock=mock
+                session,
+                result,
+                recs,
+                name=name,
+                lg=lg,
+                strategy=strategy,
+                mock=mock,
+                review=_Review(calendar, now, audit, actor_id),
             )
         result.processed_bars[name] = len(new)
         state["last_bar"][name] = bars[-1].start.isoformat()
@@ -951,6 +1007,7 @@ def _finish(
     actor_id: str,
     now: datetime,
     mock: bool,
+    event_type: str = "paper.cycle",
 ) -> None:
     book, acct = lg.book, lg.acct
     if acct is not None:
@@ -989,7 +1046,7 @@ def _finish(
         result.equity = str(book.equity(runner.marks).quantize(Decimal("0.01")))
         audit.append(
             session,
-            event_type="paper.cycle",
+            event_type=event_type,
             actor_type=ActorType.USER,
             actor_id=actor_id,
             subject_type="paper_account",
@@ -1147,3 +1204,213 @@ def _flatten(session: Session, acct: PaperAccount, book: PaperBook, at: datetime
             )
         )
     return made
+
+
+# ---------------------------------------------------------------------------- approvals
+def decide_approval(
+    session: Session,
+    approval_id: int,
+    *,
+    approve: bool,
+    reason: str,
+    actor_id: str,
+    ip: str,
+    strategy: Strategy | None,
+    provider: MarketDataProvider | None,
+    settings: Settings,
+    clock: Clock,
+    calendar: SessionCalendar,
+    audit: AuditLog,
+    policy: FreshnessPolicy | None = None,
+    venue: OrderVenue | None = None,
+) -> ApprovalRow:
+    """Approve or reject a queued candidate. Approval re-runs every risk check on current
+    data; only an ACCEPT/REDUCE creates a PAPER order (status APPROVED), anything else ends
+    the request as FAILED with the reasons. The decision never changes the candidate's side
+    and cannot raise its size above what the risk engine allows now."""
+    now = clock.now()
+    a = session.get(ApprovalRow, approval_id, with_for_update=True)
+    if a is None:
+        raise approvals.ApprovalNotFoundError(f"approval {approval_id} not found")
+    approvals.expire_due(session, now, audit)
+    if a.status != "PENDING":
+        raise approvals.ApprovalStateError(f"approval {approval_id} is {a.status}, not PENDING")
+    reason = reason.strip()
+    a.decided_at, a.decided_by, a.decision_reason, a.decision_ip = (
+        now,
+        actor_id,
+        reason[:500],
+        ip[:64],
+    )
+    if not approve:
+        a.status = "REJECTED"
+        audit.append(
+            session,
+            event_type="approval.rejected",
+            actor_type=ActorType.USER,
+            actor_id=actor_id,
+            subject_type="approval",
+            subject_id=str(a.id),
+            payload={"reason": a.decision_reason},
+        )
+        return a
+    if strategy is None or strategy.version != a.version:
+        return _approval_failed(
+            session, a, audit, actor_id, "strategy version changed since the request"
+        )
+    if provider is None:
+        return _approval_failed(session, a, audit, actor_id, "no market data provider configured")
+    horizon = Horizon(a.horizon)
+    key = _key(a.exchange, a.symbol)
+    day = now.astimezone(EXCHANGE_TZ).date()
+    intraday = horizon is Horizon.INTRADAY
+    if not calendar.is_trading_day(day) and intraday:
+        return _approval_failed(session, a, audit, actor_id, "not a trading day")
+    lg = _open_ledger(
+        session,
+        horizon=horizon,
+        settings=settings,
+        now=now,
+        since=calendar.session_open(day) if intraday else now - timedelta(days=7),
+        audit=audit,
+        actor_id=actor_id,
+        account_id=a.account_id,
+        venue=venue,
+    )
+    book, env = lg.book, lg.env
+    book.resolve_unknown(now)
+    facts = instrument_facts(session, key)
+    if facts is None:
+        return _approval_failed(session, a, audit, actor_id, "not an active instrument")
+    env.instruments[key] = facts
+    book.ticks[key] = facts.tick_size
+    adv = stored_adv(session, key, now)
+    if adv is not None:
+        env.adv[key] = adv
+    try:
+        if intraday:
+            quote = provider.latest_quote(key)
+            status = evaluate_quote(quote, now, calendar, policy).status
+            price = quote.ltp if quote is not None else None
+            hist = list(provider.bars(key, Interval.M5, calendar.session_open(day), now))
+        else:
+            hist = list(provider.bars(key, Interval.D1, now - timedelta(days=45), now))
+            status = evaluate_daily(hist[-1].start if hist else None, now, calendar).status
+            price = hist[-1].close if hist else None
+    except MarketDataUnavailableError as exc:
+        return _approval_failed(session, a, audit, actor_id, f"market data unavailable: {exc}")
+    if price is None:
+        return _approval_failed(session, a, audit, actor_id, "no current price")
+    if not intraday:
+        env.events[key] = tuple(
+            event_store.known_events(
+                session, key, now, day - timedelta(days=30), day + timedelta(days=120)
+            )
+        )
+        if horizon is Horizon.LONG_TERM:
+            env.fundamentals[key] = tuple(fundamentals_store.known(session, key, now))
+        synced = event_store.last_sync(session, key, now)
+        if synced is not None:
+            env.event_synced_at[key] = synced
+    runner: BaseRunner = (
+        IntradayRunner(strategy=strategy, book=book, calendar=calendar, env=env)
+        if intraday
+        else SwingRunner(strategy=strategy, book=book, calendar=calendar, env=env)
+    )
+    state = _ledger_state(lg.acct, horizon)
+    _prime_pnl(runner, state, day)
+    runner.marks[key] = price
+    runner.history[key] = hist[-MAX_HISTORY:]  # liquidity (R12) from the same bars a cycle sees
+    if intraday:
+        runner.day_volume[(key, day)] = sum(b.volume for b in hist)
+    d = a.detail
+    sig = Signal(
+        key=key,
+        horizon=horizon,
+        type=SignalType(a.signal_type),
+        at=now,
+        ref_price=price,
+        strategy=a.strategy,
+        version=a.version,
+        reasons=(*d.get("reasons", []), f"approved by {actor_id}: {reason[:200]}"),
+        stop=Decimal(d["stop"]) if d.get("stop") else None,
+        target=Decimal(d["target"]) if d.get("target") else None,
+        thesis=d.get("thesis"),
+        target_weight=Decimal(d["target_weight"]) if d.get("target_weight") else None,
+    )
+    loaded_orders, loaded_fills = set(book.orders), len(book.fills)
+    rec = runner._handle(sig, {"approval_id": a.id}, status.value, day, approved_by=actor_id)
+    runner.signal_log.append(rec)
+    mock = provider.origin is DataOrigin.MOCK
+    result = CycleResult("PAPER", a.account_id, now, data_is_mock=mock)
+    result.horizon = horizon.value
+    _record_signal_rows(session, result, [rec], name=str(key), lg=lg, strategy=strategy, mock=mock)
+    if intraday:
+        state["day_flow"] = str(runner.day_flow(day))
+    _finish(
+        session,
+        lg,
+        runner,
+        state,
+        result,
+        loaded_orders=loaded_orders,
+        loaded_fills=loaded_fills,
+        strategy=strategy,
+        audit=audit,
+        actor_id=actor_id,
+        now=now,
+        mock=mock,
+        event_type="approval.executed",
+    )
+    a.decision_risk = rec.risk.as_dict() | {"quote_status": status.value, "price": str(price)}
+    if rec.order_id is None:
+        failed = (
+            ", ".join(f"{c.code}: {c.detail}"[:120] for c in rec.risk.failed) or rec.decision.value
+        )
+        return _approval_failed(
+            session, a, audit, actor_id, f"risk re-check did not accept: {failed}"
+        )
+    a.status, a.order_id = "APPROVED", rec.order_id
+    if not intraday and lg.acct is not None:
+        theses.record_signals(
+            session,
+            account_id=lg.acct.id,
+            horizon=horizon,
+            records=[rec],
+            new_order_ids=set(book.orders) - loaded_orders,
+            data_is_mock=mock,
+            at=now,
+        )
+    audit.append(
+        session,
+        event_type="approval.approved",
+        actor_type=ActorType.USER,
+        actor_id=actor_id,
+        subject_type="approval",
+        subject_id=str(a.id),
+        payload={
+            "order_id": rec.order_id,
+            "quantity": rec.risk.quantity,
+            "reason": a.decision_reason,
+        },
+    )
+    session.flush()
+    return a
+
+
+def _approval_failed(
+    session: Session, a: ApprovalRow, audit: AuditLog, actor_id: str, why: str
+) -> ApprovalRow:
+    a.status = "FAILED"
+    a.decision_reason = f"{a.decision_reason or ''} — not executed: {why}"[:500]
+    audit.append(
+        session,
+        event_type="approval.failed",
+        actor_type=ActorType.USER,
+        actor_id=actor_id,
+        subject_type="approval",
+        subject_id=str(a.id),
+        payload={"why": why[:300]},
+    )
+    session.flush()
+    return a

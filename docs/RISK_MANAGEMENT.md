@@ -1,6 +1,6 @@
 # Risk Management
 
-**Status:** Implemented in Phase 4. Phase 5 adds the swing event gate (R18) and ledger-scoped R8 (`paper-default-2`, `risk-engine-1.1`). Phase 6 adds the long-term allocation band (R7), extends R18 to LONG_TERM and adds R21, giving policy `paper-default-3` and engine `risk-engine-1.2`. Limits below are **illustrative paper-test placeholders, not recommendations.** Real limits must be set by the account owner with qualified oversight.
+**Status:** Implemented in Phase 4. Phase 5 adds the swing event gate (R18) and ledger-scoped R8 (`paper-default-2`, `risk-engine-1.1`). Phase 6 adds the long-term allocation band (R7), extends R18 to LONG_TERM and adds R21, giving policy `paper-default-3` and engine `risk-engine-1.2`. Phase 8 (engine `risk-engine-1.3`) lets a human approval satisfy the REVIEW policy (`review_above_order_value`): every check still runs at approval time and any FAIL still blocks. Limits below are **illustrative paper-test placeholders, not recommendations.** Real limits must be set by the account owner with qualified oversight.
 
 **As built:**
 - **R1–R17:** implemented.

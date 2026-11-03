@@ -26,7 +26,12 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def make_settings(**overrides: Any) -> Settings:
-    values: dict[str, Any] = {"database_url": UNREACHABLE_DB_URL, "environment": "test"}
+    # Authentication is on by default in the app; tests opt in explicitly (see test_phase8_*).
+    values: dict[str, Any] = {
+        "database_url": UNREACHABLE_DB_URL,
+        "environment": "test",
+        "auth": {"enabled": False},
+    }
     values.update(overrides)
     return Settings(_env_file=None, **values)
 

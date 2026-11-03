@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from rhythm.api.auth import actor
 from rhythm.api.deps import SessionDep, StateDep, parse_key
 from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.audit import ActorType
@@ -188,7 +189,7 @@ def create_backtest(body: BacktestIn, state: StateDep, session: SessionDep) -> d
             cfg=cfg,
             results=results,
             audit=state.audit,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
         )
     return _run_out(run) | {"trades": len(results[FULL].trades)}
 
@@ -315,7 +316,7 @@ def create_account(
         state.audit,
         name=body.name,
         starting_cash=body.starting_cash,
-        actor_id=state.settings.local_actor_id,
+        actor_id=actor(state),
     )
     return {"id": a.id, "name": a.name, "account_kind": ACCOUNT_KIND, "cash": str(a.cash)}
 
@@ -462,7 +463,7 @@ def cancel_order(
             session,
             event_type="paper.order_cancelled",
             actor_type=ActorType.USER,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
             subject_type="order",
             subject_id=o.id,
             payload={"account_kind": ACCOUNT_KIND},
@@ -532,7 +533,7 @@ def _cycle(
             clock=state.clock,
             calendar=state.calendar,
             audit=state.audit,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
             account_id=account_id,
             policy=state.freshness.policy,
             research=state.research,

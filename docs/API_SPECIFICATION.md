@@ -1,6 +1,6 @@
 # Internal API Specification (initial)
 
-**Status:** Phases 1–7 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
+**Status:** Phases 1–8 implemented. Since Phase 8 every route except `/health/*`, `GET /v1/auth/status` and `POST /v1/auth/login` needs a signed-in session (cookie `rhythm_session`), and every mutating request needs the `X-CSRF-Token` header. Roles: `viewer` (GET only), `approver` (+ approval decisions and kill-switch activation), `owner` (everything; policies, kill-switch release, strategy resume, ledger allocation and user admin also need a re-auth within 5 minutes → `403 reauth_required`) (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
 
 | Method | Path | Phase | Notes |
 |---|---|---|---|
@@ -23,7 +23,11 @@
 | GET | `/v1/portfolio/ledgers?account_id=`, `/v1/portfolio/consolidated?account_id=` | 4 ✅ | per-ledger summary; consolidated per instrument with ledger breakdown |
 | PUT | `/v1/paper/accounts/{id}/ledgers/{horizon}` | 4 ✅ | allocation change; reason required; total ≤ starting capital |
 | POST | `/v1/paper/accounts/{id}/reconcile` · GET `/v1/reconciliations?account_id=` | 4 ✅ | a break activates the kill switch |
-| POST | `/v1/approvals/{order_id}` | 4/8 | approve/reject with reason |
+| GET | `/v1/auth/status` · POST `/v1/auth/login` · POST `/v1/auth/logout` · GET `/v1/auth/me` · POST `/v1/auth/reauth` · POST `/v1/auth/password` | 8 ✅ | password + 6-digit TOTP; login sets `rhythm_session` (HttpOnly) and `rhythm_csrf` cookies; generic 401 on any failure; 429 when rate-limited |
+| GET | `/v1/users` · POST `/v1/users` · POST `/v1/users/{username}/disable` \| `/enable` \| `/reset-mfa` | 8 ✅ | owner (+ re-auth for changes); the TOTP secret is returned once on create/reset |
+| GET | `/v1/approvals?status=&account_id=` · GET `/v1/approvals/{id}` · POST `/v1/approvals/{id}/decision` | 8 ✅ | queue of REQUIRES_REVIEW candidates; decision `{decision: approve\|reject, reason}` (Idempotency-Key). Approve re-runs every risk check → APPROVED + PAPER order, or FAILED with reasons |
+| GET | `/v1/notifications?unread=` · GET `/v1/notifications/summary` · POST `/v1/notifications/read` | 8 ✅ | in-app inbox; webhook delivery status per notification |
+| GET | `/v1/automation` | 8 ✅ | guards, strategies with pause state and last run, approvals policy, research gate, webhook, scheduler status |
 | POST | `/v1/events/sync` · POST `/v1/events` · GET `/v1/events?watchlist_id=` | 5 ✅ | event calendar. Sync = coverage proof for R18. Manual entries need `source_ref`; `known_at` ≤ now |
 | GET | `/v1/theses?account_id=&status=&horizon=` · GET `/v1/theses/{id}` | 5–6 ✅ | swing and long-term theses with append-only history (reviews and rebalances are OPEN→OPEN events with metrics = valuation history) |
 | POST | `/v1/fundamentals/sync` · GET `/v1/fundamentals/{exchange}/{symbol}?quarters=` | 6 ✅ | point-in-time quarterly fundamentals (MOCK today); GET returns published quarters plus derived metrics with formulas and `is_mock`. 503 when no provider is configured |
@@ -32,7 +36,7 @@
 | POST | `/v1/research/assessments` | 7 ✅ | `{signal_id, documents?}` → assess a stored candidate. Idempotency-Key required. 503 when not configured. Advisory: never creates or changes an order |
 | GET | `/v1/research/assessments?symbol=&signal_id=&status=` · GET `/v1/research/assessments/{id}` | 7 ✅ | list; detail with frozen packet (sha256), validated output, validation errors, raw excerpt, usage, gate effect |
 | GET | `/v1/broker/login-url` · GET `/v1/broker/callback` | 2 (read-only verification, after approval) | state validation; server-side token exchange |
-| GET | `/v1/audit/events` | 1+ | |
+| GET | `/v1/audit/events?event_type=&actor_id=&subject_type=&subject_id=&since=&until=&before_id=` | 1, 8 ✅ | filters added in Phase 8 (`event_type` exact or `prefix*`) |
 
 Conventions: JSON; ISO-8601 UTC timestamps plus `exchange_local` where relevant; Decimals as strings.
 

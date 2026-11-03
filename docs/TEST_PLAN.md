@@ -2,6 +2,29 @@
 
 **Status:** Phase 5: 322 Python tests (unit + integration on real PostgreSQL) and 6 web tests, all passing on 2026-11-01. Exact output is in the PHASE_1–5 reports.
 
+## Phase 8 coverage
+
+- Unit (`test_phase8_core.py`, 10):
+  - TOTP against the RFC 6238 test vectors, drift window, replay, format and provisioning URI;
+  - scrypt hashing and password policy;
+  - Fernet secret box (wrong key fails);
+  - login rate limiter;
+  - risk engine: approval satisfies only REVIEW, and a FAIL (kill switch) still blocks;
+  - approval expiry per horizon.
+- Integration on PostgreSQL (`test_phase8_api.py`, 10):
+  - login, session cookie and CSRF enforcement; actions attributed to the user; failed logins audited; logout revokes;
+  - code replay, lockout and idle timeout;
+  - roles (viewer read-only, approver kill-switch activate but not release), re-auth required and accepted, user admin (secret shown once, last owner protected, weak password refused);
+  - password change revokes other sessions;
+  - REVIEW candidate queued once, notification raised, approved → risk re-run → PAPER order + thesis, double approval refused, audit chain intact;
+  - FAILED re-check under the kill switch, reject, expiry, mark-all-read;
+  - approver decides, viewer cannot;
+  - webhook outbox: delivery, severity filter, backoff to FAILED, no URL in the payload;
+  - automation overview and audit filters;
+  - CLI user creation.
+- Settings: auth cannot be disabled and cookies cannot be insecure outside local/test; a real secret key is required; webhooks must use https.
+- Web (`status.test.ts`): approval, severity and role helpers.
+
 ## Phase 7 coverage
 
 - Unit (`test_phase7_core.py`, 34):

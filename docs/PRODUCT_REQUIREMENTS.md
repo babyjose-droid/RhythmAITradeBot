@@ -64,7 +64,7 @@ Guaranteed returns; unattended live trading; derivatives/leverage/international/
 | D-02 | Initial universe (e.g. NIFTY 50 cash) | NIFTY 50 constituents, NSE (`NC`) |
 | D-03 | Licensed data vendor(s) for intraday history & fundamentals | Mock + Sharekhan EOD only until chosen |
 | D-04 | Paper capital and allocation split by horizon | ₹10,00,000 paper; 30% intraday / 30% swing / 40% long-term |
-| D-05 | Dashboard auth (single owner + MFA?) and hosting (local only first?) | Local only, single owner |
-| D-06 | Approval policy in PAPER (auto vs manual per order) | Auto in PAPER, manual required for anything LIVE |
+| D-05 | Dashboard auth (single owner + MFA?) and hosting (local only first?) | **Decided 2026-11-03:** password + authenticator app (TOTP), roles owner/approver/viewer; hosting local first, AWS later |
+| D-06 | Approval policy in PAPER (auto vs manual per order) | **Decided 2026-11-03:** auto in PAPER except REQUIRES_REVIEW candidates (human approval queue; risk re-run on approval); manual required for anything LIVE |
 | D-07 | May Claude originate long-term ideas (for human review only)? | No — rules originate, Claude assesses |
 | D-08 | Claude model/cost budget per day | Configurable cap; Phase 7 |

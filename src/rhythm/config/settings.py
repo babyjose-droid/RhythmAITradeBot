@@ -74,6 +74,46 @@ class ResearchSettings(BaseModel):
         return v.rstrip("/")
 
 
+class AuthSettings(BaseModel):
+    """Dashboard/API sign-in (Phase 8): password + TOTP authenticator code, cookie sessions."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    # Encrypts TOTP secrets at rest and must stay stable. From a secret store, >= 32 chars.
+    secret_key: SecretStr | None = None
+    session_idle_minutes: int = Field(default=30, ge=5, le=480)
+    session_absolute_hours: int = Field(default=12, ge=1, le=72)
+    reauth_minutes: int = Field(default=5, ge=1, le=30)
+    max_failed_logins: int = Field(default=5, ge=3, le=20)
+    lockout_minutes: int = Field(default=15, ge=1, le=1440)
+    # None = Secure cookies everywhere except environment=local (plain http on 127.0.0.1).
+    cookie_secure: bool | None = None
+
+
+class NotificationSettings(BaseModel):
+    """In-app notifications (always on) plus an optional outgoing webhook (Phase 8)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    webhook_url: SecretStr | None = None  # e.g. a Slack incoming webhook; https only
+    webhook_min_severity: Literal["info", "warning", "critical"] = "warning"
+    webhook_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    dispatch_interval_seconds: float = Field(default=10.0, ge=1, le=600)
+    max_attempts: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _https_only(cls, v: SecretStr | None) -> SecretStr | None:
+        if (
+            v is not None
+            and v.get_secret_value()
+            and not v.get_secret_value().startswith("https://")
+        ):
+            raise ValueError("notification webhook_url must use https")
+        return v
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RHYTHM_",
@@ -98,6 +138,8 @@ class Settings(BaseSettings):
     fundamentals_provider: Literal["none", "mock"] = "none"  # long-term evidence (R21)
     research_provider: Literal["none", "mock", "anthropic"] = "none"  # Phase 7, advisory
     research: ResearchSettings = ResearchSettings()
+    auth: AuthSettings = AuthSettings()
+    notifications: NotificationSettings = NotificationSettings()
     freshness_intraday_max_age_seconds: float = Field(default=10.0, gt=0, le=300)
     # Identity recorded in audit events for local, unauthenticated use (auth arrives in Phase 8).
     local_actor_id: str = Field(default="local-owner", min_length=1, max_length=100)
@@ -138,6 +180,18 @@ class Settings(BaseSettings):
                 self.research_provider,
             ):
                 raise ValueError("mock data sources are not allowed outside local/test")
+        if self.environment in (Environment.STAGING, Environment.PRODUCTION):
+            if not self.auth.enabled:
+                raise ValueError("authentication cannot be disabled outside local/test")
+            if self.auth.cookie_secure is False:
+                raise ValueError("insecure session cookies are not allowed outside local/test")
+        if self.auth.enabled:
+            key = self.auth.secret_key.get_secret_value() if self.auth.secret_key else ""
+            if len(key) < 32 or any(m in key.lower() for m in PLACEHOLDER_MARKERS):
+                raise ValueError(
+                    "authentication needs RHYTHM_AUTH__SECRET_KEY (at least 32 random characters, "
+                    "from a secret store); or set RHYTHM_AUTH__ENABLED=false for a local-only demo"
+                )
         if self.research_provider != "none" and not self.features.research_service:
             raise ValueError("research_provider requires the research_service feature flag")
         if self.research_provider == "anthropic":
@@ -153,6 +207,12 @@ class Settings(BaseSettings):
         if self.features.paper_trading and self.trading_mode is not TradingMode.PAPER:
             raise ValueError("paper_trading feature requires trading_mode=PAPER")
         return self
+
+    @property
+    def cookie_secure(self) -> bool:
+        if self.auth.cookie_secure is not None:
+            return self.auth.cookie_secure
+        return self.environment is not Environment.LOCAL
 
     @property
     def orders_permitted(self) -> bool:

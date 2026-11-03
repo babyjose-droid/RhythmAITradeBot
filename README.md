@@ -2,7 +2,7 @@
 
 AI-assisted research, portfolio decision-support and paper-trading platform for Indian cash equities (initial broker: Sharekhan). Claude is advisory only; deterministic strategy rules, portfolio accounting and an independent risk engine decide whether a candidate may become an order. **Live trading is disabled by default and is not implemented.** Nothing in this project promises returns.
 
-**Current phase: 7 — Claude research service, advisory only (complete, awaiting review before Phase 8).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_7_REPORT.md`.
+**Current phase: 8 — Sign-in (password + authenticator), approvals, notifications, audit views, eight screens (complete, awaiting review before Phase 9).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_8_REPORT.md`.
 
 ## Quick start (local)
 
@@ -87,6 +87,17 @@ curl localhost:8000/v1/research/assessments/1                         # packet, 
 ```
 Dashboard: **AI research** page.
 
+Phase 8 — sign-in is **on by default** (password + authenticator app). First run:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"     # put it in .env as RHYTHM_AUTH__SECRET_KEY=...
+docker compose --env-file .env up -d --build
+docker compose exec api rhythm-cli user-create --username owner --role owner
+# → prompts for a password; prints an authenticator secret ONCE: add it to Google Authenticator / Authy / 1Password
+open http://127.0.0.1:3300/login
+```
+Roles: `owner` (everything; risk-limit changes, kill-switch release and user admin also need a fresh password + code), `approver` (decide approvals, activate the kill switch), `viewer` (read only). REQUIRES_REVIEW candidates wait under **Approvals**; approving re-runs every risk check before any PAPER order. Notifications: in-app bell, plus an optional webhook (`RHYTHM_NOTIFICATIONS__WEBHOOK_URL`). The one-command demo below turns sign-in off (`demo.env`, local only).
+
 **Demo in one go (local Docker, MOCK data, PAPER mode):**
 
 ```bash
@@ -95,7 +106,7 @@ python3 scripts/demo_paper.py        # instruments, watchlists, PAPER account, e
 open http://127.0.0.1:3300           # dashboard
 ```
 
-Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the only orders are simulated PAPER orders (DB-enforced `account_kind='PAPER'`); no broker order method exists; API and dashboard listen on loopback only (no auth until Phase 8).
+Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the only orders are simulated PAPER orders (DB-enforced `account_kind='PAPER'`); no broker order method exists; API and dashboard listen on loopback only; sign-in with password + authenticator is required unless explicitly disabled for a local demo (refused in staging/production).
 
 ## Phase 0 findings (2026-10-31)
 
@@ -117,10 +128,10 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 | 5 ✅ | Swing strategy, overnight/event gate, thesis invalidation, paper workflow | Backtests + paper tests |
 | 6 ✅ | Long-term fundamentals evidence model, thesis/valuation tracking, allocation, review schedule | Requires licensed data (D-03) or runs MOCK-labelled — built MOCK-labelled; see `docs/PHASE_6_REPORT.md` |
 | 7 ✅ | Claude research service: versioned prompts, evidence packets, schema validation, timeouts/retries/budget, safe fallback | Injection & malformed-output tests; no path to orders — MOCK provider only so far; see `docs/PHASE_7_REPORT.md` |
-| 8 | Full UX: 8 screens, approvals, notifications, audit views | Candidate/Approved/At-broker/Fill visually distinct |
+| 8 ✅ | Full UX: 8 screens, approvals, notifications, audit views | Candidate/Approved/At-broker/Fill visually distinct — plus sign-in (D-05); see `docs/PHASE_8_REPORT.md` |
 | 9 | Reliability & security: recovery, rate limits, backups, monitoring, threat review, failure injection, extended paper evaluation | Runbook rehearsed |
 | 10 | Live-readiness **review only** | Checklist complete; live stays off until separate explicit approval |
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from rhythm.audit import ActorType, AuditLog
 from rhythm.core.errors import RhythmError
 from rhythm.db.models import ControlEventRow, RiskCheckRow, RiskPolicyRow
+from rhythm.notifications.service import notify
 from rhythm.risk.engine import RiskDecision
 from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
 
@@ -155,7 +156,26 @@ def set_kill_switch(
         at=at,
         detail=detail,
     )
+    notify(
+        session,
+        kind="kill_switch_activated" if active else "kill_switch_released",
+        severity="critical" if active else "info",
+        title="Kill switch ACTIVATED — new PAPER entries blocked"
+        if active
+        else "Kill switch released",
+        body=f"by {actor_id} ({actor_type.value}): {reason.strip()[:300]}",
+        at=at,
+        link="/risk",
+        subject_type="control",
+        subject_id=GLOBAL,
+    )
     return True
+
+
+def _pause_severity(paused: bool, actor_type: ActorType) -> str:
+    if not paused:
+        return "info"
+    return "critical" if actor_type is ActorType.SYSTEM else "warning"
 
 
 def set_strategy_paused(
@@ -183,6 +203,19 @@ def set_strategy_paused(
         reason=reason,
         at=at,
         detail=detail,
+    )
+    notify(
+        session,
+        kind="strategy_paused" if paused else "strategy_resumed",
+        severity=("critical" if actor_type is ActorType.SYSTEM else "warning")
+        if paused
+        else "info",
+        title=f"Strategy {strategy} {'paused' if paused else 'resumed'}",
+        body=f"by {actor_id} ({actor_type.value}): {reason.strip()[:300]}",
+        at=at,
+        link="/risk",
+        subject_type="strategy",
+        subject_id=strategy,
     )
     return True
 

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from rhythm.api.auth import actor, require_recent_auth
 from rhythm.api.deps import SessionDep, StateDep
 from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.audit import ActorType
@@ -57,14 +58,14 @@ def kill_switch(
 ) -> Any:
     def produce() -> dict[str, Any]:
         now = state.clock.now()
-        actor = state.settings.local_actor_id
+        who = actor(state)
         if body.action == "activate":
             res = paper.activate_kill_switch(
                 session,
                 state.audit,
                 settings=state.settings,
                 actor_type=ActorType.USER,
-                actor_id=actor,
+                actor_id=who,
                 reason=body.reason,
                 at=now,
                 flatten_intraday=body.flatten_intraday,
@@ -78,12 +79,13 @@ def kill_switch(
         else:
             if body.flatten_intraday:
                 raise HTTPException(422, "flatten_intraday only applies to activation")
+            require_recent_auth(state, role="owner")  # releasing is an owner decision
             changed = controls.set_kill_switch(
                 session,
                 state.audit,
                 active=False,
                 actor_type=ActorType.USER,
-                actor_id=actor,
+                actor_id=who,
                 reason=body.reason,
                 at=now,
             )
@@ -117,7 +119,7 @@ def _pause(
             strategy=name,
             paused=paused,
             actor_type=ActorType.USER,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
             reason=body.reason,
             at=state.clock.now(),
         )
@@ -183,7 +185,7 @@ def create_policy(
                 session,
                 state.audit,
                 params=body.params,
-                approved_by=state.settings.local_actor_id,
+                approved_by=actor(state),
                 reason=body.reason,
                 at=state.clock.now(),
             )
@@ -321,7 +323,7 @@ def set_allocation(
                 acct=acct,
                 horizon=horizon,
                 allocated_capital=body.allocated_capital,
-                actor_id=state.settings.local_actor_id,
+                actor_id=actor(state),
                 reason=body.reason,
             )
         except portfolio.LedgerError as exc:
@@ -372,7 +374,7 @@ def reconcile(
             result=result,
             at=now,
             trigger="manual",
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
         )
         if not result.ok:
             controls.set_kill_switch(

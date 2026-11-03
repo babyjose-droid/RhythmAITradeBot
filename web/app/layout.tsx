@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ModeBanner } from "@/components/ModeBanner";
+import { SessionBar } from "@/components/Session";
 
 import "./globals.css";
 
@@ -16,20 +17,27 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <ModeBanner />
-        <header className="nav">
-          <span className="brand">Rhythm AI Trader</span>
-          <nav>
-            <Link href="/">Overview</Link>
-            <Link href="/intraday">Intraday workspace</Link>
-            <Link href="/swing">Swing workspace</Link>
-            <Link href="/long-term">Long-term</Link>
-            <Link href="/research">AI research</Link>
-            <Link href="/portfolio">Portfolio &amp; reconciliation</Link>
-            <Link href="/risk">Risk &amp; controls</Link>
-            <Link href="/backtests">Backtests</Link>
-          </nav>
-        </header>
-        <main>{children}</main>
+        <SessionBar>
+          <header className="nav">
+            <span className="brand">Rhythm AI Trader</span>
+            <nav aria-label="Screens">
+              <Link href="/">Portfolio dashboard</Link>
+              <Link href="/intraday">Intraday</Link>
+              <Link href="/swing">Swing</Link>
+              <Link href="/long-term">Long-term</Link>
+              <Link href="/research">AI research</Link>
+              <Link href="/risk">Risk centre</Link>
+              <Link href="/automation">Automation</Link>
+              <Link href="/audit">Audit &amp; reconciliation</Link>
+            </nav>
+            <nav aria-label="More" className="nav-more">
+              <Link href="/approvals">Approvals</Link>
+              <Link href="/portfolio">Ledgers</Link>
+              <Link href="/backtests">Backtests</Link>
+            </nav>
+          </header>
+          <main>{children}</main>
+        </SessionBar>
         <footer className="foot">
           Decision support and PAPER simulation only. No profit is implied; nothing here is
           investment advice.

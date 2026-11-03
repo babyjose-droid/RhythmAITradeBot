@@ -4,6 +4,7 @@ from rhythm.db.models.fundamentals import FundamentalSnapshotRow
 from rhythm.db.models.health import SystemHealthEvent
 from rhythm.db.models.instruments import Instrument, InstrumentSnapshot, Watchlist, WatchlistItem
 from rhythm.db.models.marketdata import DataQualityEvent, MarketBar
+from rhythm.db.models.ops import ApprovalRow, AuthSessionRow, NotificationRow, UserRow
 from rhythm.db.models.research import AIAssessmentRow, PromptVersionRow, ResearchPacketRow
 from rhythm.db.models.risk import (
     ControlEventRow,
@@ -27,7 +28,9 @@ from rhythm.db.models.trading import (
 
 __all__ = [
     "AIAssessmentRow",
+    "ApprovalRow",
     "AuditEvent",
+    "AuthSessionRow",
     "BacktestRun",
     "BacktestTrade",
     "ControlEventRow",
@@ -41,6 +44,7 @@ __all__ = [
     "InstrumentSnapshot",
     "Ledger",
     "MarketBar",
+    "NotificationRow",
     "OrderEventRow",
     "OrderRow",
     "PaperAccount",
@@ -54,6 +58,7 @@ __all__ = [
     "SystemHealthEvent",
     "ThesisEventRow",
     "ThesisRow",
+    "UserRow",
     "Watchlist",
     "WatchlistItem",
 ]

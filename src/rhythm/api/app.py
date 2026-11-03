@@ -9,15 +9,20 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import structlog
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 
 from rhythm import __version__
+from rhythm.api.auth import access
+from rhythm.api.routes import (
+    auth as auth_routes,
+)
 from rhythm.api.routes import (
     instruments,
     marketdata,
+    ops,
     research,
     risk,
     swing,
@@ -27,6 +32,7 @@ from rhythm.api.routes import (
 )
 from rhythm.api.state import AppState
 from rhythm.audit import ActorType, AuditLog
+from rhythm.auth.service import AuthService
 from rhythm.broker.base import BrokerReadAdapter
 from rhythm.broker.mock import MockBrokerAdapter
 from rhythm.config import Settings, get_settings
@@ -42,6 +48,8 @@ from rhythm.marketdata.freshness import FreshnessPolicy
 from rhythm.marketdata.mock import MockMarketDataProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
 from rhythm.marketdata.provider import MarketDataProvider
+from rhythm.notifications import service as notifications
+from rhythm.notifications.dispatcher import WebhookDispatcher
 from rhythm.research.providers import AnthropicProvider, MockResearchProvider, ResearchProvider
 from rhythm.research.service import ResearchService
 
@@ -67,6 +75,7 @@ def _audit_lifecycle(state: AppState, event_type: str) -> None:
                     "fundamentals_provider": state.settings.fundamentals_provider,
                     "research_provider": state.settings.research_provider,
                     "research_gate_paper_entries": state.settings.research.gate_paper_entries,
+                    "auth_enabled": state.settings.auth.enabled,
                 },
             )
     except Exception:
@@ -164,6 +173,16 @@ def create_app(
         research=None
         if rprov is None or not settings.features.research_service
         else ResearchService(rprov, settings.research, clock, audit),
+        auth=AuthService(settings.auth, audit) if settings.auth.enabled else None,
+    )
+    notifications.configure(settings.notifications)
+    wh = settings.notifications.webhook_url
+    dispatcher = (
+        WebhookDispatcher(
+            settings.notifications, state.session_factory, clock, settings.environment.value
+        )
+        if wh is not None and wh.get_secret_value()
+        else None
     )
 
     @asynccontextmanager
@@ -175,7 +194,11 @@ def create_app(
             trading_mode=settings.trading_mode.value,
         )
         _audit_lifecycle(state, "system.started")
+        if dispatcher is not None:
+            dispatcher.start()
         yield
+        if dispatcher is not None:
+            dispatcher.stop()
         _audit_lifecycle(state, "system.stopped")
         log.info("shutdown")
 
@@ -184,6 +207,10 @@ def create_app(
         version=__version__,
         description="Research and paper-trading API. Live trading is not available.",
         lifespan=lifespan,
+        # Interactive docs only in local/test; hosted environments do not publish the schema.
+        docs_url="/docs" if settings.environment.value in ("local", "test") else None,
+        redoc_url=None,
+        openapi_url="/openapi.json" if settings.environment.value in ("local", "test") else None,
     )
     app.state.rhythm = state
 
@@ -226,12 +253,18 @@ def create_app(
             media_type="application/problem+json",
         )
 
-    app.include_router(system.router)
-    app.include_router(instruments.router)
-    app.include_router(watchlists.router)
-    app.include_router(marketdata.router)
-    app.include_router(trading.router)
-    app.include_router(risk.router)
-    app.include_router(swing.router)
-    app.include_router(research.router)
+    guarded = [Depends(access)]  # authentication + authorisation on every route (Phase 8)
+    for r in (
+        system.router,
+        auth_routes.router,
+        instruments.router,
+        watchlists.router,
+        marketdata.router,
+        trading.router,
+        risk.router,
+        swing.router,
+        research.router,
+        ops.router,
+    ):
+        app.include_router(r, dependencies=guarded)
     return app

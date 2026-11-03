@@ -9,18 +9,48 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+/** Cookie set by the API at sign-in; echoed in X-CSRF-Token on every mutating request. */
+export function csrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|;\s*)rhythm_csrf=([^;]+)/);
+  return m?.[1] ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Sensitive actions (risk limits, kill-switch release, user admin) need a recent
+ * re-authentication. The layout registers a dialog that asks for password + code; the
+ * request is then retried once. Nothing is retried without the user's explicit re-auth.
+ */
+let reauthHandler: (() => Promise<boolean>) | null = null;
+export function setReauthHandler(fn: (() => Promise<boolean>) | null): void {
+  reauthHandler = fn;
+}
+
+async function call<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const csrf = method === "GET" ? null : csrfToken();
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "content-type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      ...(init?.headers ?? {}),
+    },
     cache: "no-store",
+    credentials: "same-origin",
   });
   const text = await res.text();
   const body: unknown = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const detail =
       body && typeof body === "object" && "detail" in body ? String((body as { detail: unknown }).detail) : res.statusText;
-    throw new ApiError(res.status, detail);
+    if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+    }
+    if (res.status === 403 && detail === "reauth_required" && !retried && reauthHandler) {
+      if (await reauthHandler()) return call<T>(path, init, true);
+    }
+    throw new ApiError(res.status, detail === "reauth_required" ? "Re-authentication required for this action" : detail);
   }
   return body as T;
 }
@@ -380,4 +410,126 @@ export interface Assessment {
       untrusted_documents: { id: string; source: string; text: string }[];
     };
   } | null;
+}
+
+// ------------------------------------------------------------------ Phase 8
+export interface Me {
+  username: string;
+  role: "owner" | "approver" | "viewer";
+  auth_enabled: boolean;
+  recently_reauthenticated: boolean;
+}
+
+export interface AuthStatus {
+  enabled: boolean;
+  has_users: boolean;
+  setup_hint?: string | null;
+}
+
+export interface Approval {
+  id: number;
+  created_at: string;
+  account_id: number;
+  signal_id: number | null;
+  instrument: string;
+  horizon: string;
+  signal_type: string;
+  strategy: string;
+  source: "RISK" | "RESEARCH";
+  reason: string;
+  detail: {
+    decided_at: string;
+    ref_price: string;
+    stop: string | null;
+    target: string | null;
+    target_weight: string | null;
+    reasons: string[];
+    thesis: Record<string, unknown> | null;
+    risk: { outcome: string; quantity: number; policy_version: string };
+    assessment_id: number | null;
+  };
+  data_is_mock: boolean;
+  expires_at: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "FAILED";
+  decided_at: string | null;
+  decided_by: string | null;
+  decision_reason: string | null;
+  decision_risk: { outcome: string; quantity: number; quote_status: string; price: string } | null;
+  order_id: string | null;
+}
+
+export interface Notification {
+  id: number;
+  created_at: string;
+  kind: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  body: string;
+  link: string | null;
+  read_at: string | null;
+  read_by: string | null;
+  webhook: { status: string; attempts: number; error: string | null };
+}
+
+export interface NotificationSummary {
+  unread: Record<"info" | "warning" | "critical", number>;
+  unread_total: number;
+  webhook_configured: boolean;
+  webhook_min_severity: string;
+}
+
+export interface AuditEventRow {
+  id: number;
+  occurred_at: string;
+  event_type: string;
+  actor_type: string;
+  actor_id: string;
+  subject_type: string | null;
+  subject_id: string | null;
+  payload: Record<string, unknown>;
+  row_hash: string;
+}
+
+export interface Automation {
+  trading_mode: string;
+  kill_switch_active: boolean;
+  strategies: {
+    name: string;
+    version: string;
+    horizon: string;
+    paused: boolean;
+    run_after: string;
+    last_run: {
+      at: string;
+      by: string;
+      kind: string;
+      account_id: string | null;
+      new_orders: number | null;
+      new_fills: number | null;
+      signals: number | null;
+      data_is_mock: boolean | null;
+    } | null;
+  }[];
+  approvals: { policy: string; pending: number };
+  research: { provider: string; gate_paper_entries: boolean };
+  notifications: { webhook_configured: boolean; min_severity: string };
+  scheduler: { configured: boolean; note: string };
+}
+
+export interface UserRowOut {
+  username: string;
+  role: string;
+  created_at: string;
+  created_by: string;
+  disabled: boolean;
+  locked_until: string | null;
+  failed_logins: number;
+}
+
+export interface Enrollment {
+  username: string;
+  role: string;
+  totp_secret: string;
+  provisioning_uri: string;
+  note: string;
 }

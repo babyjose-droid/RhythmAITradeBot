@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from rhythm.api.auth import actor
 from rhythm.api.deps import SessionDep, StateDep
 from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.core.clock import EXCHANGE_TZ
@@ -133,7 +134,7 @@ def _assess(body: AssessIn, state: StateDep, session: SessionDep) -> dict[str, A
         packet,
         signal_type=sig.signal_type,
         context=sig.context,
-        actor_id=state.settings.local_actor_id,
+        actor_id=actor(state),
         signal_id=sig.id,
     )
     return out.as_dict() | {

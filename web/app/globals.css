@@ -92,3 +92,25 @@ td:has(.band) { padding-bottom: 22px; }
 .meter > div { height: 100%; background: #2f6fbf; }
 blockquote.untrusted { border-left: 4px dashed var(--bad); margin: 8px 0; padding: 6px 10px; background: #fff7f6; white-space: pre-wrap; }
 .warn-text { color: var(--bad); }
+
+/* Phase 8: session bar, notifications, approvals, dialogs */
+.session { display: flex; gap: 14px; align-items: center; justify-content: flex-end; padding: 4px 16px; font-size: 13px; background: #f6f7f9; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.session .who { color: var(--muted); }
+.bell { text-decoration: none; font-weight: 600; }
+.bell-critical { color: var(--bad); }
+.bell-crit { font-weight: 700; }
+button.linkish { background: none; border: none; color: #2f6fbf; cursor: pointer; padding: 0; font: inherit; }
+.nav-more { opacity: 0.85; font-size: 13px; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+.modal { background: var(--card); border-radius: 8px; padding: 18px; width: min(420px, 100%); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+.modal label, .form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.modal .row, .form .row { display: flex; gap: 8px; justify-content: flex-end; }
+.form { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
+.login-wrap { display: flex; justify-content: center; padding: 40px 16px; }
+.notif-unread { font-weight: 600; }
+.notif-critical { border-left: 4px solid var(--bad); }
+.notif-warning { border-left: 4px dashed var(--warn); }
+.notif-info { border-left: 4px dotted var(--muted); }
+.secret { font-family: ui-monospace, Menlo, monospace; word-break: break-all; background: #fff7e0; border: 1px dashed #d4a400; padding: 8px; border-radius: 6px; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.filters label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }

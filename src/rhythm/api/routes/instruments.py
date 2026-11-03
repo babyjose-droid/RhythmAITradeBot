@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from rhythm.api.auth import actor
 from rhythm.api.deps import SessionDep, StateDep, parse_key, problem
 from rhythm.broker.base import BrokerAuthError, BrokerError
 from rhythm.core.clock import to_exchange_local
@@ -132,7 +133,7 @@ def sync_scrip_master(state: StateDep, exchange: Exchange = Exchange.NSE) -> Syn
                 clock=state.clock,
                 audit=state.audit,
                 environment=state.settings.environment,
-                actor_id=state.settings.local_actor_id,
+                actor_id=actor(state),
             )
         except MockDataNotAllowedError as exc:
             raise problem(status.HTTP_403_FORBIDDEN, str(exc)) from exc

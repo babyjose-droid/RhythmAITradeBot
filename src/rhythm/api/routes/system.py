@@ -109,11 +109,33 @@ def audit_events(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
     before_id: int | None = Query(None, ge=1),
+    event_type: str | None = Query(None, max_length=100, description="exact type or prefix*"),
+    actor_id: str | None = Query(None, max_length=100),
+    subject_type: str | None = Query(None, max_length=64),
+    subject_id: str | None = Query(None, max_length=100),
+    since: datetime | None = None,
+    until: datetime | None = None,
 ) -> list[AuditEventOut]:
     st = _state(request)
     stmt = select(AuditEvent).order_by(AuditEvent.id.desc()).limit(limit)
     if before_id is not None:
         stmt = stmt.where(AuditEvent.id < before_id)
+    if event_type:
+        stmt = stmt.where(
+            AuditEvent.event_type.startswith(event_type[:-1], autoescape=True)
+            if event_type.endswith("*")
+            else AuditEvent.event_type == event_type
+        )
+    if actor_id:
+        stmt = stmt.where(AuditEvent.actor_id == actor_id)
+    if subject_type:
+        stmt = stmt.where(AuditEvent.subject_type == subject_type)
+    if subject_id:
+        stmt = stmt.where(AuditEvent.subject_id == subject_id)
+    if since is not None:
+        stmt = stmt.where(AuditEvent.occurred_at >= since)
+    if until is not None:
+        stmt = stmt.where(AuditEvent.occurred_at < until)
     with session_scope(st.session_factory) as s:
         rows = s.execute(stmt).scalars().all()
         return [

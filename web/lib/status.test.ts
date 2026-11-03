@@ -10,6 +10,9 @@ import {
   riskOutcomeTone,
   thesisTone,
   verdictLabel,
+  approvalTone,
+  severityTone,
+  canAct,
 } from "./status";
 
 describe("visual grammar", () => {
@@ -75,5 +78,17 @@ describe("visual grammar", () => {
     expect(verdictLabel("INVALID", null).label).toContain("held for review");
     expect(verdictLabel("WEIRD", "CONFIRM").tone).toBe("fail");
     expect(verdictLabel("VALID", "STRONG_BUY").tone).toBe("fail");
+  });
+
+  it("shows approval and notification states without implying an order", () => {
+    expect(approvalTone("APPROVED")).toBe("ok");
+    expect(approvalTone("PENDING")).toBe("reduce");
+    expect(approvalTone("FAILED")).toBe("fail");
+    expect(approvalTone("WEIRD")).toBe("fail");
+    expect(severityTone("critical")).toBe("fail");
+    expect(canAct("viewer", "approve")).toBe(false);
+    expect(canAct("approver", "approve")).toBe(true);
+    expect(canAct("approver", "own")).toBe(false);
+    expect(canAct(undefined, "own")).toBe(false);
   });
 });

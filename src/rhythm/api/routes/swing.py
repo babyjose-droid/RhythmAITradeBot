@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from rhythm.api.auth import actor
 from rhythm.api.deps import SessionDep, StateDep, parse_key
 from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.core.clock import EXCHANGE_TZ
@@ -62,7 +63,7 @@ def sync_events(
                 now=state.clock.now(),
                 environment=state.settings.environment,
                 audit=state.audit,
-                actor_id=state.settings.local_actor_id,
+                actor_id=actor(state),
             )
         except MockDataNotAllowedError as exc:
             raise HTTPException(409, str(exc)) from exc
@@ -109,9 +110,7 @@ def add_event(body: EventIn, state: StateDep, session: SessionDep) -> dict[str, 
         source_ref=body.source_ref,
         note=body.note,
     )
-    added = event_store.add_manual(
-        session, ev, audit=state.audit, actor_id=state.settings.local_actor_id
-    )
+    added = event_store.add_manual(session, ev, audit=state.audit, actor_id=actor(state))
     return {"added": added, "instrument": str(key), "kind": body.kind.value}
 
 
@@ -204,7 +203,7 @@ def sync_fundamentals(
                 now=state.clock.now(),
                 environment=state.settings.environment,
                 audit=state.audit,
-                actor_id=state.settings.local_actor_id,
+                actor_id=actor(state),
             )
         except MockDataNotAllowedError as exc:
             raise HTTPException(409, str(exc)) from exc

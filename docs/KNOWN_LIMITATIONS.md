@@ -20,11 +20,16 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 8:** the per-IP login limiter is in memory, per API process. Behind the dashboard proxy the API sees the proxy's address, so per-IP limits and recorded IPs reflect the proxy. Per-user lockout still applies.
+- **Phase 8:** there is no QR code for enrolment (enter the secret manually or open the `otpauth://` URI), and no WebAuthn or recovery codes. If an authenticator is lost, an owner runs `rhythm-cli user-reset-mfa`.
+- **Phase 8:** `Secure` cookies need HTTPS when hosted (the AWS deployment brings TLS). Locally on `http://127.0.0.1` cookies are not marked Secure.
+- **Phase 8:** there is no scheduler yet: cycles run when triggered (dashboard, API or an external cron). Phase 9 adds one.
+- **Phase 8:** the kill switch and approvals queue are global across PAPER accounts. Approvals are never re-queued automatically after expiry; the next cycle files a new request if the rules still produce the candidate.
 - **Phase 7:** no real model has been called. All assessments so far come from the deterministic MOCK provider. The Anthropic provider is tested only against a simulated transport. Model choice and budget (D-08) are open.
 - **Phase 7:** there is no licensed news or filings source. Untrusted documents are only what a user pastes, or event notes from the event provider.
 - **Phase 7:** the validator rejects any number not found in the packet, including numbers in free text. This is deliberately strict and can reject reasonable replies; they then fail closed to REQUIRES_REVIEW.
 - **Phase 7:** MOCK token counts are estimates (chars / 4). Cost is shown only when the owner sets current per-token rates.
-- **Phase 7:** the PAPER entry gate is global (all strategies). There is no human approval flow for REQUIRES_REVIEW yet; that comes in Phase 8.
+- **Phase 7:** the PAPER entry gate is global (all strategies). Since Phase 8, held entries reach the approvals queue.
 - **Phase 7:** a stored candidate's freshness comes from its recorded R4 result. If R4 was not evaluated (for example, a blocked candidate), it is reported as UNKNOWN.
 - **Phase 6:** the only fundamentals source is MOCK (synthetic quarters). Long-term PAPER on real data stays blocked by R21 until a licensed, point-in-time fundamentals vendor with restatement history is configured (B-06 / D-03).
 - **Phase 6:** no corporate-action adjustment of EPS/price (splits/bonus) and no sector data; P/E and P/B use the last close and unadjusted TTM figures.
@@ -37,7 +42,7 @@
 - **Phase 4:** the circuit-band check (R6) runs only when the data source supplies the band; MOCK quotes do not.
 - **Phase 4:** ADV for R12 comes from stored daily bars when present. Otherwise it is the mean of earlier sessions in the run or an estimate from today's bars (the source is recorded with the decision).
 - **Phase 4:** for PAPER, UNKNOWN resolution matches against an in-memory venue order book. Timeouts are simulated only in tests.
-- **Phase 4:** controls are global (one kill switch for all PAPER accounts). "User" actions are attributed to `local-owner` until authentication arrives (Phase 8).
+- **Phase 4:** controls are global (one kill switch for all PAPER accounts). Since Phase 8, user actions are attributed to the signed-in user (`local-owner` only when sign-in is disabled for a local demo).
 - **Phase 3:** the cost model is **illustrative and unverified** (placeholder brokerage rates, and statutory rates not checked against a current contract note). Every backtest and paper result carries `verified=false`.
 - **Phase 3:** long-only intraday; no short selling. Fill simulation has no queue position, latency or exchange rejections. The bar-based fill model cannot see moves inside a bar.
 - **Phase 3:** backtest and paper results so far use MOCK random-walk data. They validate the pipeline, not the strategy.

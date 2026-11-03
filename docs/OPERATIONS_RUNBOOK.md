@@ -28,6 +28,24 @@ The next morning's cycle is not needed: fills happen when the next after-close c
 
 After the close: sync fundamentals (daily is fine — nothing is rewritten) and the event calendar (weekly), run the long-term cycle, then review the Long-term page: new-results reviews, any REDUCE/ADD rebalances, and INVALIDATED theses (exit queued for the next open). Remember every fundamental number is MOCK.
 
+## Users, sign-in and approvals (Phase 8)
+
+**First run**
+1. Set `RHYTHM_AUTH__SECRET_KEY` (keep a secure copy: losing or changing it invalidates every enrolled authenticator).
+2. Run `docker compose exec api rhythm-cli user-create --username owner --role owner`.
+3. Add the printed secret to an authenticator app.
+
+**Common fixes**
+- **Locked out:** wait 15 minutes, or run `rhythm-cli user-enable --username <name>`.
+- **Lost authenticator:** run `rhythm-cli user-reset-mfa --username <name>`, or an owner uses Account → Reset authenticator. This revokes that user's sessions.
+- **Suspected session theft:** change the password (other sessions are revoked) or disable the user.
+
+**Daily checks**
+- Clear the **Approvals** queue before it expires: intraday at the close, daily horizons by the next close.
+- A FAILED approval means the risk re-check refused it; read the reasons and do not retry blindly.
+- Review **Notifications**: critical items (kill switch, reconciliation break, daily loss stop) need action the same day.
+- If a webhook shows FAILED, check the endpoint. Delivery is retried up to 5 times.
+
 ## Research service (Phase 7, advisory)
 
 - **Status and budget:** `GET /v1/research/status`, or the AI research page. The budget resets at IST midnight. When it is exhausted, assessments are stored as BUDGET_EXCEEDED without a call.

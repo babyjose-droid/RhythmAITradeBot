@@ -66,9 +66,32 @@ def test_placeholder_credentials_refused_outside_local(env: str) -> None:
 
 def test_production_with_non_placeholder_url_accepted() -> None:
     s = make_settings(
-        environment="production", database_url="postgresql+psycopg://rhythm:Xq9-long@db/rhythm"
+        environment="production",
+        database_url="postgresql+psycopg://rhythm:Xq9-long@db/rhythm",
+        auth={"enabled": True, "secret_key": "q" * 20 + "7Zr-" * 4},
     )
-    assert s.environment.value == "production"
+    assert s.environment.value == "production" and s.cookie_secure
+
+
+def test_production_refuses_disabled_auth_and_insecure_cookies() -> None:
+    url = "postgresql+psycopg://rhythm:Xq9-long@db/rhythm"
+    with pytest.raises(ValidationError, match="cannot be disabled"):
+        make_settings(environment="production", database_url=url, auth={"enabled": False})
+    with pytest.raises(ValidationError, match="insecure session cookies"):
+        make_settings(
+            environment="staging",
+            database_url=url,
+            auth={"enabled": True, "secret_key": "q" * 40, "cookie_secure": False},
+        )
+
+
+def test_auth_needs_a_real_secret_key() -> None:
+    with pytest.raises(ValidationError, match="SECRET_KEY"):
+        make_settings(auth={"enabled": True})
+    with pytest.raises(ValidationError, match="SECRET_KEY"):
+        make_settings(auth={"enabled": True, "secret_key": "change-me-" + "x" * 30})
+    with pytest.raises(ValidationError, match="https"):
+        make_settings(notifications={"webhook_url": "http://hooks.example.org/x"})
 
 
 def test_non_postgres_url_refused() -> None:

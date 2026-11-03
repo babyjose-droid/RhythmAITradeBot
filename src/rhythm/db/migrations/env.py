@@ -3,6 +3,8 @@ or, when absent, from application settings (RHYTHM_DATABASE_URL)."""
 
 from __future__ import annotations
 
+import os
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
@@ -17,6 +19,10 @@ def _url() -> str:
     url = config.get_main_option("sqlalchemy.url")
     if url:
         return url
+    # Migrations need only the database URL, not the app's other secrets (auth key, ...).
+    env_url = os.environ.get("RHYTHM_DATABASE_URL")
+    if env_url:
+        return env_url
     from rhythm.config import get_settings  # noqa: PLC0415 — only needed without -x url
 
     return get_settings().database_url.get_secret_value()

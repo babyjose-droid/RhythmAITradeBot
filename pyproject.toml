@@ -19,6 +19,7 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "structlog>=24.4",
   "httpx>=0.27,<1",  # research provider (Anthropic Messages API)
+  "cryptography>=44",  # encrypts TOTP secrets at rest (Fernet)
 ]
 
 [project.optional-dependencies]
@@ -169,6 +170,12 @@ name = "Research packets, schema, prompts, validation, gate and providers are pu
 type = "forbidden"
 source_modules = ["rhythm.research.packet", "rhythm.research.schema", "rhythm.research.prompts", "rhythm.research.validate", "rhythm.research.gate", "rhythm.research.providers"]
 forbidden_modules = ["rhythm.db", "rhythm.audit", "rhythm.api", "rhythm.paper"]
+
+[[tool.importlinter.contracts]]
+name = "Auth and notifications never reach orders, the broker, research or the API"
+type = "forbidden"
+source_modules = ["rhythm.auth", "rhythm.notifications"]
+forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.execution", "rhythm.paper", "rhythm.risk", "rhythm.research", "rhythm.api"]
 
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small

@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
+from rhythm.api.auth import actor
 from rhythm.api.deps import SessionDep, StateDep, parse_key
 from rhythm.db.models import Watchlist
 from rhythm.instruments import watchlists as svc
@@ -86,7 +87,7 @@ def create(body: WatchlistIn, state: StateDep, session: SessionDep) -> Watchlist
             name=body.name,
             horizon=body.horizon,
             description=body.description,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
         )
         return _out(session, svc.get_watchlist(session, wl.id))
 
@@ -100,9 +101,7 @@ def get_one(watchlist_id: int, session: SessionDep) -> WatchlistOut:
 @router.delete("/{watchlist_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete(watchlist_id: int, state: StateDep, session: SessionDep) -> Response:
     with _errors():
-        svc.delete_watchlist(
-            session, state.audit, watchlist_id=watchlist_id, actor_id=state.settings.local_actor_id
-        )
+        svc.delete_watchlist(session, state.audit, watchlist_id=watchlist_id, actor_id=actor(state))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -117,7 +116,7 @@ def add_item(watchlist_id: int, body: ItemIn, state: StateDep, session: SessionD
             watchlist_id=watchlist_id,
             key=key,
             note=body.note,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
         )
         return _out(session, svc.get_watchlist(session, watchlist_id))
 
@@ -133,6 +132,6 @@ def remove_item(
             state.audit,
             watchlist_id=watchlist_id,
             key=key,
-            actor_id=state.settings.local_actor_id,
+            actor_id=actor(state),
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

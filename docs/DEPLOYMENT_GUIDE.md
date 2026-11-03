@@ -14,6 +14,14 @@ Every push to `main` that passes all CI checks publishes the API image to GitHub
 - `ghcr.io/babyjose-droid/rhythmaitradebot:sha-<7-char-commit>` — immutable, per commit
 - `ghcr.io/babyjose-droid/rhythmaitradebot-web:main` and `:sha-<commit>` — dashboard image (Phase 3)
 
+Settings added in Phase 8:
+- `RHYTHM_AUTH__ENABLED` (default `true`; `false` is refused outside local/test);
+- `RHYTHM_AUTH__SECRET_KEY` (at least 32 random characters; encrypts authenticator secrets, so it must stay stable; Secrets Manager on AWS);
+- `RHYTHM_AUTH__SESSION_IDLE_MINUTES` (30), `__SESSION_ABSOLUTE_HOURS` (12), `__REAUTH_MINUTES` (5), `__MAX_FAILED_LOGINS` (5), `__LOCKOUT_MINUTES` (15), `__COOKIE_SECURE` (default: on except local);
+- `RHYTHM_NOTIFICATIONS__WEBHOOK_URL` (https; a secret), `__WEBHOOK_MIN_SEVERITY` (warning).
+
+First user: `docker compose exec api rhythm-cli user-create --username owner --role owner`. Migrations need only `RHYTHM_DATABASE_URL`.
+
 Settings added in Phase 7:
 - `RHYTHM_FEATURES__RESEARCH_SERVICE`;
 - `RHYTHM_RESEARCH_PROVIDER` (`none` | `mock` local/test | `anthropic`);

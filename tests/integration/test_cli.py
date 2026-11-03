@@ -22,6 +22,7 @@ def cli_env(db_url: str, migrated: Engine, monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("RHYTHM_DATABASE_URL", db_url)
     monkeypatch.setenv("RHYTHM_ENVIRONMENT", "test")
     monkeypatch.setenv("RHYTHM_LOG_LEVEL", "ERROR")
+    monkeypatch.setenv("RHYTHM_AUTH__ENABLED", "false")
 
 
 @pytest.mark.usefixtures("cli_env")
@@ -43,5 +44,6 @@ def test_cli_refuses_mock_in_production(
     monkeypatch.setenv("RHYTHM_DATABASE_URL", db_url)
     monkeypatch.setenv("RHYTHM_ENVIRONMENT", "production")
     monkeypatch.setenv("RHYTHM_LOG_LEVEL", "ERROR")
+    monkeypatch.setenv("RHYTHM_AUTH__SECRET_KEY", "test-only-" + "k" * 40)
     code, out = _run(capsys, "instruments-sync", "--source", "mock")
     assert code == 3 and out["status"] == "REFUSED"

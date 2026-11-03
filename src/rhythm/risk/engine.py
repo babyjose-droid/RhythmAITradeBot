@@ -26,7 +26,7 @@ from rhythm.core.market import Horizon, InstrumentKey
 from rhythm.execution.costs import CostModel, Product, Side
 from rhythm.risk.policy import DEFAULT_POLICY, RiskPolicy
 
-ENGINE_VERSION = "risk-engine-1.2"
+ENGINE_VERSION = "risk-engine-1.3"
 ORDER_MODES = frozenset({"PAPER", "BACKTEST", "SIMULATION"})  # LIVE is never accepted
 
 
@@ -63,6 +63,9 @@ class OrderProposal:
     quantity: int | None = None  # None: the engine sizes the order
     limit_price: Decimal | None = None
     purpose: str = "entry"
+    # Set when a human approved this exact candidate (Phase 8 approvals). It satisfies only
+    # the REVIEW policy; every check still runs and any FAIL still blocks.
+    approved_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -584,6 +587,7 @@ def _decide(
         return RiskDecision(RiskOutcome.BLOCK, 0, p.intent, tuple(resolved), pol.version)
     if (
         p.intent is Intent.OPEN
+        and p.approved_by is None
         and pol.review_above_order_value is not None
         and final * p.ref_price > pol.review_above_order_value
     ):

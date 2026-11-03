@@ -33,9 +33,16 @@
 - **Theses:** entry thesis with invalidation rules, allocation band and key metrics with provenance. Reviews (every 20 sessions or on new results) and rebalances are recorded as OPEN→OPEN events.
 - **Why / why not:** the cycle response has `diagnostics` per instrument (entry checks, metrics, weight, band, action).
 
+## Approvals (Phase 8)
+
+- **What waits for a human:** only candidates marked REQUIRES_REVIEW. That is either the risk engine (order value above `review_above_order_value`) or the AI research gate holding an entry or add. Everything else goes straight from the risk engine to the PAPER order path (decision D-06). Exits are never queued.
+- **Expiry:** one open request per candidate. Intraday requests expire at the session close; swing and long-term requests at the next session's close.
+- **Approving:** re-runs every risk check on current prices and liquidity through the same runner code as a cycle. Only ACCEPT or REDUCE creates the PAPER order (and the thesis, for daily horizons). Otherwise the request becomes FAILED, with the reasons recorded.
+- **Who may decide:** owner or approver.
+
 ## Still to do
 
 - Latency and rejection simulation (price band, funds) — Phase 4/9.
-- Approval step — Phase 8.
+- ~~Approval step~~ — done in Phase 8 (REQUIRES_REVIEW only, decision D-06; see below).
 - Real market data — B-06. While data is MOCK, sessions are labelled **PAPER + MOCK DATA** and excluded from live-readiness evaluation.
 - Observation period (owner to define, D-04/Phase 9): e.g. ≥ 60 trading sessions, reviewing risk breaches, reconciliation breaks, alert handling, and divergence between paper and backtest.

@@ -35,6 +35,45 @@ Broker API key + Secret Key; daily access token (JWT, 24 h); Anthropic API key; 
 - Least privilege: separate DB roles for app, migrations, read-only reporting. Network: DB not publicly reachable.
 - Dependencies pinned with hashes; Dependabot / pip-audit / npm audit in CI.
 
+### Dashboard and API sign-in (Phase 8, as built; decision D-05)
+
+**Passwords**
+- Hashed with scrypt (N=2^15, r=8, p=1, 16-byte salt).
+- Policy: at least 12 characters, no username, not repetitive.
+- Unknown users are checked against a dummy hash, so the response time does not reveal which usernames exist.
+
+**MFA**
+- TOTP per RFC 6238 (tested against the RFC vectors), ±1 step allowed.
+- The last accepted step is stored, so a code cannot be replayed.
+- Secrets are sealed with Fernet using a key derived from `RHYTHM_AUTH__SECRET_KEY`. That key is required, at least 32 characters, never a placeholder, and comes from a secret store when hosted.
+- Secrets are displayed once, at creation or reset.
+
+**Sessions**
+- A 256-bit random token in an `HttpOnly`, `SameSite=Strict` cookie (`Secure` outside local).
+- The database stores only `sha256(token)`.
+- Idle timeout 30 min; absolute limit 12 h.
+- Logout and disabling a user revoke sessions server-side. A password change revokes the user's other sessions.
+
+**CSRF**
+- Double-submit: the `rhythm_csrf` cookie value must be echoed in `X-CSRF-Token` on POST/PUT/PATCH/DELETE. It is compared against a hash bound to the session.
+
+**Brute force**
+- Per-user lockout after 5 failures (15 min).
+- Per-IP limit of 20 attempts per 15 min, in memory.
+- Generic `invalid credentials` responses. Every failure is audited.
+
+**Authorisation**
+- One dependency on every router applies a deny-by-default permission table (viewer / approver / owner).
+- Owner re-authentication within 5 minutes is required for: risk policies, kill-switch release, strategy resume, ledger allocation and user admin.
+
+**Environments**
+- Staging and production refuse to start with auth disabled or insecure cookies.
+- OpenAPI and docs are served only in local/test.
+
+**Repudiation**
+- The signed-in username is the actor of every audit event.
+- Approvals record user, time, IP and reason.
+
 ### Research service (Phase 7, as built)
 - **Research API key:**
   - held as a `SecretStr`;

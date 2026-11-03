@@ -169,3 +169,29 @@ export function verdictLabel(status: string, action: string | null): { tone: "ok
       return { tone: "fail", label: `unrecognised verdict (${String(action)}) — held` };
   }
 }
+
+/** Approval states (Phase 8). Only APPROVED produced a PAPER order; FAILED means the risk
+ * re-check at approval time did not accept it, so nothing was sent. */
+export function approvalTone(status: string): "ok" | "reduce" | "fail" | "skip" {
+  switch (status) {
+    case "PENDING":
+      return "reduce";
+    case "APPROVED":
+      return "ok";
+    case "REJECTED":
+    case "EXPIRED":
+      return "skip";
+    default:
+      return "fail";
+  }
+}
+
+export function severityTone(severity: string): "ok" | "reduce" | "fail" | "skip" {
+  return severity === "critical" ? "fail" : severity === "warning" ? "reduce" : "skip";
+}
+
+/** Which screens' mutating controls a role may use (the API enforces the same rules). */
+export function canAct(role: string | undefined, action: "own" | "approve"): boolean {
+  if (role === "owner") return true;
+  return action === "approve" && role === "approver";
+}

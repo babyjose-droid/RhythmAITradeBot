@@ -307,7 +307,13 @@ class BaseRunner:
         return max(0, held - target)
 
     def _handle(
-        self, sig: Signal, diag: dict[str, Any], quote_status: str, day: date
+        self,
+        sig: Signal,
+        diag: dict[str, Any],
+        quote_status: str,
+        day: date,
+        *,
+        approved_by: str | None = None,
     ) -> SignalRecord:
         key = sig.key
         idem = f"{sig.strategy}:{sig.version}:{key}:{sig.at.isoformat()}:{sig.type.value}"
@@ -338,6 +344,7 @@ class BaseRunner:
             stop=sig.stop if buy else None,
             quantity=qty,
             purpose=purpose,
+            approved_by=approved_by,
         )
         state, decision = self.assess(proposal, quote_status)
         if not decision.accepted:
@@ -349,7 +356,7 @@ class BaseRunner:
             )
             return SignalRecord(sig, dstate, decision, None, diag)
         advice: Advice | None = None
-        if buy and self.advisor is not None:
+        if buy and self.advisor is not None and approved_by is None:
             advice = self.advisor(sig, diag, decision)
             if not advice.allow:
                 self.risk_log.append(RiskRecord(proposal, state, decision, None))

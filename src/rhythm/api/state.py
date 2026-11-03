@@ -9,6 +9,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from rhythm.audit import AuditLog
+from rhythm.auth.service import AuthService
 from rhythm.broker.base import BrokerReadAdapter
 from rhythm.config import Settings
 from rhythm.core.calendar import SessionCalendar
@@ -39,6 +40,7 @@ class AppState:
     events: EventProvider | None = None
     fundamentals: FundamentalsProvider | None = None
     research: ResearchService | None = None
+    auth: AuthService | None = None
     _last_ready: bool | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

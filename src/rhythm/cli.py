@@ -7,14 +7,17 @@ refused outside local/test environments by the same guards the API uses.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import os
 import sys
 from collections.abc import Sequence
 from datetime import timedelta
 
 from rhythm.audit import AuditLog
+from rhythm.auth.service import AuthService, UserExistsError
 from rhythm.broker.mock import MOCK_SYMBOLS, MockBrokerAdapter
-from rhythm.config import get_settings
+from rhythm.config import Settings, get_settings
 from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import SystemClock, to_exchange_local
 from rhythm.core.logging import configure_logging
@@ -30,6 +33,53 @@ from rhythm.marketdata.types import Interval
 
 def _print(obj: object) -> None:
     sys.stdout.write(json.dumps(obj, indent=2, default=str) + "\n")
+
+
+def _read_password() -> str:
+    """From RHYTHM_NEW_USER_PASSWORD (non-interactive) or a hidden prompt (asked twice)."""
+    env = os.environ.get("RHYTHM_NEW_USER_PASSWORD")
+    if env:
+        return env
+    first = getpass.getpass("New password (min 12 characters): ")
+    if getpass.getpass("Repeat password: ") != first:
+        raise SystemExit("passwords do not match")
+    return first
+
+
+def _users(args: argparse.Namespace, settings: Settings) -> int:
+    if not settings.auth.enabled:
+        sys.stderr.write("authentication is disabled (RHYTHM_AUTH__ENABLED=false)\n")
+        return 2
+    clock = SystemClock()
+    svc = AuthService(settings.auth, AuditLog(environment=settings.environment.value, clock=clock))
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    with session_scope(create_session_factory(engine)) as s:
+        if args.cmd == "user-enable":
+            svc.set_disabled(s, args.username, disabled=False, actor="cli", at=clock.now())
+            _print({"username": args.username, "enabled": True})
+            return 0
+        if args.cmd == "user-reset-mfa":
+            e = svc.reset_mfa(s, args.username, actor="cli", at=clock.now())
+        else:
+            try:
+                e = svc.create_user(
+                    s,
+                    username=args.username,
+                    password=_read_password(),
+                    role=args.role,
+                    created_by="cli",
+                    at=clock.now(),
+                )
+            except (ValueError, UserExistsError) as exc:
+                sys.stderr.write(f"error: {exc}\n")
+                return 2
+    sys.stdout.write(
+        f"User {e.username} ({e.role}). Add this to your authenticator app now"
+        " (it is shown once):\n"
+        f"  secret: {e.totp_secret}\n  uri:    {e.provisioning_uri}\n"
+        "Then sign in at the dashboard with the password and the 6-digit code.\n"
+    )
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -62,6 +112,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_bt.add_argument("--symbols", default="NSE:MOCKA,NSE:MOCKB,NSE:MOCKC")
     p_bt.add_argument("--days", type=int, default=30)
     p_bt.add_argument("--capital", default="1000000")
+
+    p_user = sub.add_parser(
+        "user-create", help="create a dashboard user (password + authenticator app)"
+    )
+    p_user.add_argument("--username", required=True)
+    p_user.add_argument("--role", choices=["owner", "approver", "viewer"], required=True)
+    p_mfa = sub.add_parser("user-reset-mfa", help="issue a new authenticator secret for a user")
+    p_mfa.add_argument("--username", required=True)
+    p_unlock = sub.add_parser("user-enable", help="re-enable / unlock a user")
+    p_unlock.add_argument("--username", required=True)
 
     p_acct = sub.add_parser("paper-account-create", help="create a PAPER account")
     p_acct.add_argument("--name", required=True)
@@ -174,6 +234,9 @@ def _run(args: argparse.Namespace) -> int:
             run_id = run.id
         _print({"source": "MOCK", "run_id": run_id, "run_hash": bt.run_hash, **bt.metrics})
         return 0
+
+    if args.cmd in ("user-create", "user-reset-mfa", "user-enable"):
+        return _users(args, settings)
 
     if args.cmd == "paper-account-create":
         from decimal import Decimal  # noqa: PLC0415
