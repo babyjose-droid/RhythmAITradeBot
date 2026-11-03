@@ -7,6 +7,7 @@ Prerequisite: the API runs in PAPER mode with mock sources (see demo.env):
 
 Usage:  python3 scripts/demo_paper.py [--api http://127.0.0.1:8000]
 Safe to run repeatedly: existing watchlists/accounts are reused. Standard library only.
+Works on Python 3.9+ (the macOS system python3).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 SYMBOLS = ["NSE:MOCKA", "NSE:MOCKB", "NSE:MOCKC"]
@@ -144,7 +145,7 @@ def main() -> int:
         print(code, r)
 
     step("Backtests on MOCK data (pipeline checks, not evidence of edge)")
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)  # noqa: UP017 (runs on the Mac's Python 3.9)
     for strategy, days in (
         ("intraday_orb_vwap", 20),
         ("swing_trend_pullback", 400),
