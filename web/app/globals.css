@@ -85,3 +85,10 @@ textarea { font: inherit; width: 100%; min-height: 48px; padding: 6px; border-ra
 .band-below, .band-above { background: var(--warn); }
 .band-label { position: absolute; left: 0; top: 20px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 td:has(.band) { padding-bottom: 22px; }
+
+/* Phase 7: AI research centre */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.meter { height: 8px; background: #eceff3; border-radius: 4px; overflow: hidden; margin-bottom: 4px; max-width: 320px; }
+.meter > div { height: 100%; background: #2f6fbf; }
+blockquote.untrusted { border-left: 4px dashed var(--bad); margin: 8px 0; padding: 6px 10px; background: #fff7f6; white-space: pre-wrap; }
+.warn-text { color: var(--bad); }

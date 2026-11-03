@@ -1,6 +1,6 @@
 # Internal API Specification (initial)
 
-**Status:** Phases 1–5 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
+**Status:** Phases 1–7 implemented (health, mode, audit, instruments, watchlists, market data, data quality, strategies, backtests, PAPER accounts/orders/fills/cycles, research cycle, signals, risk controls/policies/decisions, ledgers, consolidated view, reconciliation — exact lists in the PHASE_2/3/4 reports; live OpenAPI at `/docs`); remaining rows are planned. FastAPI generates the authoritative OpenAPI document from Phase 1; this file will then summarise and link it. This is *our* API — Sharekhan's is in SHAREKHAN_INTEGRATION.md.
 
 | Method | Path | Phase | Notes |
 |---|---|---|---|
@@ -28,7 +28,9 @@
 | GET | `/v1/theses?account_id=&status=&horizon=` · GET `/v1/theses/{id}` | 5–6 ✅ | swing and long-term theses with append-only history (reviews and rebalances are OPEN→OPEN events with metrics = valuation history) |
 | POST | `/v1/fundamentals/sync` · GET `/v1/fundamentals/{exchange}/{symbol}?quarters=` | 6 ✅ | point-in-time quarterly fundamentals (MOCK today); GET returns published quarters plus derived metrics with formulas and `is_mock`. 503 when no provider is configured |
 | POST | `/v1/paper/accounts/{id}/cycle` with `strategy: swing_trend_pullback` | 5 ✅ | swing PAPER cycle (after the close). Orders and signals accept `?horizon=` |
-| GET | `/v1/research/assessments/{id}` | 7 | packet, sources, output, validation result |
+| GET | `/v1/research/status` · GET `/v1/research/prompts` | 7 ✅ | provider, MOCK flag, gate on/off, prompt id + hash, daily token budget; prompt text and output schema |
+| POST | `/v1/research/assessments` | 7 ✅ | `{signal_id, documents?}` → assess a stored candidate. Idempotency-Key required. 503 when not configured. Advisory: never creates or changes an order |
+| GET | `/v1/research/assessments?symbol=&signal_id=&status=` · GET `/v1/research/assessments/{id}` | 7 ✅ | list; detail with frozen packet (sha256), validated output, validation errors, raw excerpt, usage, gate effect |
 | GET | `/v1/broker/login-url` · GET `/v1/broker/callback` | 2 (read-only verification, after approval) | state validation; server-side token exchange |
 | GET | `/v1/audit/events` | 1+ | |
 

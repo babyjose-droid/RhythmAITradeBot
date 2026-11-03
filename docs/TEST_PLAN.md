@@ -2,6 +2,29 @@
 
 **Status:** Phase 5: 322 Python tests (unit + integration on real PostgreSQL) and 6 web tests, all passing on 2026-11-01. Exact output is in the PHASE_1–5 reports.
 
+## Phase 7 coverage
+
+- Unit (`test_phase7_core.py`, 34):
+  - packet provenance, determinism and point-in-time correctness;
+  - untrusted-document sanitising (delimiters, control characters, length);
+  - prompt rules;
+  - each validation rejection (malformed, non-object, oversize, extra fields such as `quantity`, unknown actions, wrong symbol/as_of, unknown sources, metric/source mismatch, numbers not in the packet, CONFIRM without evidence);
+  - rounding and percent tolerance;
+  - gate truth table (only confirm or downgrade; exits never blocked);
+  - MOCK provider determinism and downgrades;
+  - **prompt-injection fixture**;
+  - Anthropic request shape, retries, timeout and auth errors (no key leakage, no retry on 401);
+  - settings safety;
+  - runner advisor hook (hold → no order; CONFIRM → identical quantity; exits never consulted).
+- Integration on PostgreSQL (`test_phase7_api.py`, 9):
+  - not configured → 503;
+  - end-to-end assessment with idempotent replay (no second provider call);
+  - injection with a compromised MOCK model → INVALID and held;
+  - budget exhausted → no call;
+  - PAPER gate: HOLD → no order or thesis; CONFIRM → the rules' order goes through; provider timeout → fail closed;
+  - research tables append-only.
+- Web (`status.test.ts`): a research failure or downgrade is never shown as an approval.
+
 ## Phase 6 coverage
 
 - Unit (`test_phase6_core.py`, 29): snapshot validation, derived metrics and formulas, point-in-time selection with restatements, MOCK determinism and publication lag, look-ahead guard, entry with thesis, each blocked-entry reason, invalidation exit, hold, review rebalances (stretched P/E, above band, below band), new-results review, R7 band, R18/R21 gates, policy bounds, weight-based sizing with no stop orders, rebalance orders, backtest determinism and fundamentals sensitivity.

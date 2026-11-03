@@ -28,6 +28,13 @@ The next morning's cycle is not needed: fills happen when the next after-close c
 
 After the close: sync fundamentals (daily is fine — nothing is rewritten) and the event calendar (weekly), run the long-term cycle, then review the Long-term page: new-results reviews, any REDUCE/ADD rebalances, and INVALIDATED theses (exit queued for the next open). Remember every fundamental number is MOCK.
 
+## Research service (Phase 7, advisory)
+
+- **Status and budget:** `GET /v1/research/status`, or the AI research page. The budget resets at IST midnight. When it is exhausted, assessments are stored as BUDGET_EXCEEDED without a call.
+- **If the PAPER entry gate is on:** any non-CONFIRM result holds the entry. Typical causes are timeouts, invalid replies or an exhausted budget. Held candidates appear with decision HOLD / NO_ACTION / REQUIRES_REVIEW, and their assessment is linked from the candidate row. To proceed without research, turn the gate off and restart. Exits are never affected.
+- **Invalid replies:** read the errors and the raw excerpt on the assessment page. Never copy numbers from a rejected reply.
+- **Key handling:** if a key is ever exposed, revoke it at the provider and replace it in the secret store. Never put it in `.env` files that are committed, or in chat.
+
 ## Phase 4 control procedures (PAPER)
 
 - **Kill switch:**

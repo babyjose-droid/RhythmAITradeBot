@@ -18,6 +18,7 @@ from rhythm import __version__
 from rhythm.api.routes import (
     instruments,
     marketdata,
+    research,
     risk,
     swing,
     system,
@@ -41,6 +42,8 @@ from rhythm.marketdata.freshness import FreshnessPolicy
 from rhythm.marketdata.mock import MockMarketDataProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
 from rhythm.marketdata.provider import MarketDataProvider
+from rhythm.research.providers import AnthropicProvider, MockResearchProvider, ResearchProvider
+from rhythm.research.service import ResearchService
 
 log = get_logger(__name__)
 
@@ -62,6 +65,8 @@ def _audit_lifecycle(state: AppState, event_type: str) -> None:
                     "broker_adapter": state.settings.broker_adapter,
                     "event_provider": state.settings.event_provider,
                     "fundamentals_provider": state.settings.fundamentals_provider,
+                    "research_provider": state.settings.research_provider,
+                    "research_gate_paper_entries": state.settings.research.gate_paper_entries,
                 },
             )
     except Exception:
@@ -91,6 +96,23 @@ def build_fundamentals(
     return None
 
 
+def build_research_provider(settings: Settings) -> ResearchProvider | None:
+    if settings.research_provider == "mock":
+        return MockResearchProvider()
+    if settings.research_provider == "anthropic":
+        r = settings.research
+        if r.api_key is None or r.model is None:  # also enforced by Settings
+            raise ValueError("anthropic research provider needs an API key and a model")
+        return AnthropicProvider(
+            api_key=r.api_key.get_secret_value(),
+            model=r.model,
+            base_url=r.base_url,
+            timeout_seconds=r.timeout_seconds,
+            max_retries=r.max_retries,
+        )
+    return None
+
+
 def build_broker(settings: Settings, clock: Clock) -> BrokerReadAdapter | None:
     if settings.broker_adapter == "mock":
         return MockBrokerAdapter(clock=clock)
@@ -107,6 +129,7 @@ def create_app(
     calendar: SessionCalendar | None = None,
     events: EventProvider | None = None,
     fundamentals: FundamentalsProvider | None = None,
+    research_provider: ResearchProvider | None = None,
     configure_logs: bool = True,
 ) -> FastAPI:
     settings = settings or get_settings()  # raises on unsafe config (e.g. LIVE)
@@ -117,12 +140,14 @@ def create_app(
     calendar = calendar or SessionCalendar()
     market_data = market_data or build_market_data(settings, clock, calendar)
     broker = broker or build_broker(settings, clock)
+    audit = AuditLog(environment=settings.environment.value, clock=clock)
+    rprov = research_provider or build_research_provider(settings)
     state = AppState(
         settings=settings,
         engine=engine,
         session_factory=create_session_factory(engine),
         clock=clock,
-        audit=AuditLog(environment=settings.environment.value, clock=clock),
+        audit=audit,
         calendar=calendar,
         market_data=market_data,
         broker=broker,
@@ -136,6 +161,9 @@ def create_app(
         ),
         events=events or build_events(settings),
         fundamentals=fundamentals or build_fundamentals(settings, market_data),
+        research=None
+        if rprov is None or not settings.features.research_service
+        else ResearchService(rprov, settings.research, clock, audit),
     )
 
     @asynccontextmanager
@@ -205,4 +233,5 @@ def create_app(
     app.include_router(trading.router)
     app.include_router(risk.router)
     app.include_router(swing.router)
+    app.include_router(research.router)
     return app

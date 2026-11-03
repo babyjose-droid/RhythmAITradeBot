@@ -17,7 +17,7 @@ daily loss stop. A reconciliation break activates the kill switch.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -48,6 +48,7 @@ from rhythm.execution.fills import FillModel, OrderType
 from rhythm.execution.gateway import OrderVenue, PaperVenue
 from rhythm.execution.runner import (
     MAX_HISTORY,
+    Advice,
     BaseRunner,
     IntradayRunner,
     RiskEnvironment,
@@ -68,9 +69,11 @@ from rhythm.marketdata.types import Interval
 from rhythm.orders.state import TERMINAL, OrderState
 from rhythm.paper import theses
 from rhythm.portfolio import service as portfolio
-from rhythm.risk.engine import InstrumentFacts, Intent, OrderProposal
+from rhythm.research.packet import CandidateView, build_packet
+from rhythm.research.service import ResearchService
+from rhythm.risk.engine import InstrumentFacts, Intent, OrderProposal, RiskDecision
 from rhythm.risk.policy import RiskPolicy
-from rhythm.strategies.base import Strategy, params_hash
+from rhythm.strategies.base import DecisionState, Signal, Strategy, params_hash
 from rhythm.strategies.intraday_orb import IntradayOrbVwap
 
 DISABLED_MSG = "PAPER cycles need RHYTHM_TRADING_MODE=PAPER and RHYTHM_FEATURES__PAPER_TRADING=true"
@@ -113,6 +116,8 @@ class CycleResult:
     # Why (not): the strategy's own summary per instrument for the last bar evaluated.
     diagnostics: dict[str, dict[str, Any]] = field(default_factory=dict)
     theses: dict[str, int] = field(default_factory=dict)
+    # Phase 7: research gate summary (None when the gate is off).
+    research: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------- accounts
@@ -413,6 +418,7 @@ def _signal_row(
         diagnostics={k: v for k, v in rec.diagnostics.items() if k != "checks"}
         | {"checks": {k: bool(v) for k, v in rec.diagnostics.get("checks", {}).items()}},
         order_id=rec.order_id if persist_orders else None,
+        assessment_id=rec.advice.ref if rec.advice is not None else None,
         data_is_mock=data_is_mock,
     )
 
@@ -528,8 +534,78 @@ def _record_signal_rows(
                 "failed_checks": [c.code for c in rec.risk.failed],
                 "reasons": list(rec.signal.reasons),
                 "order_id": rec.order_id if lg.persist else None,
+                "research": None
+                if rec.advice is None
+                else {
+                    "allow": rec.advice.allow,
+                    "decision": rec.advice.decision.value,
+                    "reason": rec.advice.reason,
+                    "assessment_id": rec.advice.ref,
+                },
             }
         )
+
+
+def _research_advisor(
+    session: Session,
+    research: ResearchService | None,
+    settings: Settings,
+    lg: _Ledger,
+    result: CycleResult,
+    mock: bool,
+    actor_id: str,
+) -> Callable[[Signal, dict[str, Any], RiskDecision], Advice] | None:
+    """PAPER research gate: risk-accepted entries/adds need a valid CONFIRM (fail closed)."""
+    if research is None or not lg.persist or not settings.research.gate_paper_entries:
+        return None
+    summary: dict[str, Any] = {"assessed": 0, "allowed": 0, "held": 0, "statuses": {}}
+    result.research = summary
+    env = lg.env
+
+    def advise(sig: Signal, diag: dict[str, Any], decision: RiskDecision) -> Advice:
+        cand = CandidateView(
+            key=sig.key,
+            horizon=sig.horizon,
+            signal_type=sig.type.value,
+            at=sig.at,
+            strategy=sig.strategy,
+            version=sig.version,
+            ref_price=sig.ref_price,
+            data_is_mock=mock,
+            stop=sig.stop,
+            target=sig.target,
+            target_weight=sig.target_weight,
+            reasons=sig.reasons,
+            diagnostics={k: v for k, v in diag.items() if k != "checks"}
+            | {"checks": diag.get("checks", {})},
+            risk=decision.as_dict(),
+            quote_status="FRESH",  # R4 passed: entries require a fresh quote
+        )
+        packet = build_packet(
+            cand,
+            fundamentals=env.fundamentals.get(sig.key, ()),
+            events=env.events.get(sig.key, ()),
+            event_calendar_synced=None
+            if sig.horizon is Horizon.INTRADAY
+            else sig.key in env.event_synced_at,
+        )
+        over = summary["assessed"] >= settings.research.max_assessments_per_cycle
+        out = research.assess(
+            session,
+            packet,
+            signal_type=sig.type.value,
+            context="PAPER",
+            actor_id=actor_id,
+            skip_reason="max_assessments_per_cycle reached" if over else None,
+        )
+        summary["assessed"] += 1
+        summary["statuses"][out.status] = summary["statuses"].get(out.status, 0) + 1
+        summary["allowed" if out.gate.allow else "held"] += 1
+        if out.gate.allow:
+            return Advice(True, sig.decision, out.gate.reason, out.id)
+        return Advice(False, DecisionState(out.gate.decision), out.gate.reason, out.id)
+
+    return advise
 
 
 def run_cycle(
@@ -546,6 +622,7 @@ def run_cycle(
     account_id: int | None = None,
     policy: FreshnessPolicy | None = None,
     venue: OrderVenue | None = None,
+    research: ResearchService | None = None,
 ) -> CycleResult:
     """Run one cycle for the strategy's horizon (INTRADAY 5-minute or SWING daily)."""
     if strategy.horizon in (Horizon.SWING, Horizon.LONG_TERM):
@@ -561,6 +638,7 @@ def run_cycle(
             actor_id=actor_id,
             account_id=account_id,
             venue=venue,
+            research=research,
         )
     now = clock.now()
     day = now.astimezone(EXCHANGE_TZ).date()
@@ -594,6 +672,7 @@ def run_cycle(
     if state.get("day") != day.isoformat():
         state = {"day": day.isoformat(), "last_bar": {}, "entries": {}}
     runner = IntradayRunner(strategy=strategy, book=book, calendar=calendar, env=env)
+    runner.advisor = _research_advisor(session, research, settings, lg, result, mock, actor_id)
     _prime_pnl(runner, state, day)
     loaded_orders = set(book.orders)
     loaded_fills = len(book.fills)
@@ -681,6 +760,7 @@ def _run_daily(
     actor_id: str,
     account_id: int | None,
     venue: OrderVenue | None,
+    research: ResearchService | None = None,
 ) -> CycleResult:
     """Daily cycle for multi-day positions (SWING and LONG_TERM). Run after the close.
 
@@ -711,6 +791,7 @@ def _run_daily(
     state = _ledger_state(lg.acct, horizon)
     state.setdefault("last_bar", {})
     runner = SwingRunner(strategy=strategy, book=book, calendar=calendar, env=env)
+    runner.advisor = _research_advisor(session, research, settings, lg, result, mock, actor_id)
     loaded_orders = set(book.orders)
     loaded_fills = len(book.fills)
     today = now.astimezone(EXCHANGE_TZ).date()

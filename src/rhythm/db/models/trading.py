@@ -185,6 +185,8 @@ class StrategySignalRow(Base):
     risk: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     diagnostics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     order_id: Mapped[str | None] = mapped_column(ForeignKey("orders.id"))
+    # Phase 7: the research assessment that gated this candidate (PAPER research gate).
+    assessment_id: Mapped[int | None] = mapped_column(BigInteger)
     data_is_mock: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 

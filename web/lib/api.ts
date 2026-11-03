@@ -138,6 +138,8 @@ export interface SignalRow {
   stop: string | null;
   target: string | null;
   order_id: string | null;
+  assessment_id?: number | null;
+  horizon?: string;
   data_is_mock: boolean;
 }
 
@@ -300,4 +302,82 @@ export interface Fundamentals {
   is_mock: boolean;
   quarters: { period_end: string; known_at: string; source: string; source_ref: string; metrics: Record<string, string> }[];
   derived: Record<string, DerivedMetric>;
+}
+
+// ------------------------------------------------------------------ research (Phase 7)
+export interface ResearchStatus {
+  enabled: boolean;
+  provider: string;
+  feature_flag: boolean;
+  gate_paper_entries: boolean;
+  prompt: { id: string; sha256: string };
+  allowed_actions: string[];
+  authority: string;
+  model?: string;
+  is_mock?: boolean;
+  max_assessments_per_cycle?: number;
+  budget?: {
+    day: string;
+    tokens_used: number;
+    token_budget: number;
+    tokens_remaining: number;
+    assessments: number;
+    cost_usd: string | null;
+    cost_rates_configured: boolean;
+    resets_at: string;
+  };
+}
+
+export interface AssessmentOutput {
+  observed_facts: { statement: string; source_ids: string[] }[];
+  bull_case: string[];
+  bear_case: string[];
+  catalysts: string[];
+  invalidation_conditions: string[];
+  key_metrics_with_provenance: { name: string; value: string; source_ids: string[] }[];
+  suggested_action: string;
+  rationale: string;
+  confidence_explanation: string;
+  key_uncertainties: string[];
+  change_view_conditions: string[];
+  evidence_sufficient: boolean;
+}
+
+export interface Assessment {
+  id: number;
+  created_at: string;
+  context: string;
+  signal_id: number | null;
+  instrument: string;
+  horizon: string;
+  signal_type: string;
+  provider: string;
+  model: string;
+  is_mock: boolean;
+  prompt_version: string;
+  status: string;
+  suggested_action: string | null;
+  gate: { allow: boolean; decision: string; reason: string };
+  errors: string[];
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    estimated: boolean;
+    cost_usd: string | null;
+    latency_ms: number;
+    attempts: number;
+  };
+  output: AssessmentOutput | null;
+  raw_excerpt?: string;
+  packet?: {
+    id: number;
+    sha256: string;
+    content: {
+      facts: { id: string; name: string; value: string; unit: string; source: string; source_ts: string | null }[];
+      derived_metrics: { id: string; name: string; value: string | null; formula: string; inputs: string[] }[];
+      missing: string[];
+      assumptions: string[];
+      untrusted_documents: { id: string; source: string; text: string }[];
+    };
+  } | null;
 }

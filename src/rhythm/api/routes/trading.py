@@ -535,6 +535,7 @@ def _cycle(
             actor_id=state.settings.local_actor_id,
             account_id=account_id,
             policy=state.freshness.policy,
+            research=state.research,
         )
     return res.__dict__ | {"account_kind": ACCOUNT_KIND if account_id is not None else None}
 
@@ -599,6 +600,7 @@ def signals(
             "reasons": s.reasons,
             "risk": s.risk,
             "order_id": s.order_id,
+            "assessment_id": s.assessment_id,
             "data_is_mock": s.data_is_mock,
         }
         for s in session.execute(stmt).scalars()

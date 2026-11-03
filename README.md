@@ -2,7 +2,7 @@
 
 AI-assisted research, portfolio decision-support and paper-trading platform for Indian cash equities (initial broker: Sharekhan). Claude is advisory only; deterministic strategy rules, portfolio accounting and an independent risk engine decide whether a candidate may become an order. **Live trading is disabled by default and is not implemented.** Nothing in this project promises returns.
 
-**Current phase: 6 — Long-term fundamentals, theses, valuation history, allocation bands (complete, awaiting review before Phase 7).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_6_REPORT.md`.
+**Current phase: 7 — Claude research service, advisory only (complete, awaiting review before Phase 8).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_7_REPORT.md`.
 
 ## Quick start (local)
 
@@ -74,6 +74,19 @@ curl "localhost:8000/v1/theses?account_id=1&horizon=LONG_TERM"
 ```
 Dashboard: **Long-term** page.
 
+Phase 7 — Claude research (advisory: may confirm or downgrade a rule-generated candidate; cannot create, size or send orders). MOCK provider locally; no API key needed:
+
+```bash
+RHYTHM_FEATURES__RESEARCH_SERVICE=true RHYTHM_RESEARCH_PROVIDER=mock ...rhythm-api
+curl localhost:8000/v1/research/status
+curl -X POST localhost:8000/v1/research/assessments -H 'Idempotency-Key: assess-0001' \
+     -H 'content-type: application/json' -d '{"signal_id":1}'        # any stored candidate
+curl localhost:8000/v1/research/assessments/1                         # packet, output, validation
+# optional: RHYTHM_RESEARCH__GATE_PAPER_ENTRIES=true → PAPER entries need a valid CONFIRM (fail closed)
+# real model: RHYTHM_RESEARCH_PROVIDER=anthropic + RHYTHM_RESEARCH__MODEL + RHYTHM_RESEARCH__API_KEY (secret store)
+```
+Dashboard: **AI research** page.
+
 **Demo in one go (local Docker, MOCK data, PAPER mode):**
 
 ```bash
@@ -103,11 +116,11 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 | 4 ✅ | Risk engine (all checks), ledgers + consolidated view, kill switch/pauses, idempotency, reconciliation | Every risk rule unit-tested; fail-closed tests; duplicate/UNKNOWN scenarios |
 | 5 ✅ | Swing strategy, overnight/event gate, thesis invalidation, paper workflow | Backtests + paper tests |
 | 6 ✅ | Long-term fundamentals evidence model, thesis/valuation tracking, allocation, review schedule | Requires licensed data (D-03) or runs MOCK-labelled — built MOCK-labelled; see `docs/PHASE_6_REPORT.md` |
-| 7 | Claude research service: versioned prompts, evidence packets, schema validation, timeouts/retries/budget, safe fallback | Injection & malformed-output tests; no path to orders |
+| 7 ✅ | Claude research service: versioned prompts, evidence packets, schema validation, timeouts/retries/budget, safe fallback | Injection & malformed-output tests; no path to orders — MOCK provider only so far; see `docs/PHASE_7_REPORT.md` |
 | 8 | Full UX: 8 screens, approvals, notifications, audit views | Candidate/Approved/At-broker/Fill visually distinct |
 | 9 | Reliability & security: recovery, rate limits, backups, monitoring, threat review, failure injection, extended paper evaluation | Runbook rehearsed |
 | 10 | Live-readiness **review only** | Checklist complete; live stays off until separate explicit approval |
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

@@ -20,6 +20,7 @@ from rhythm.events.types import EventProvider
 from rhythm.fundamentals.types import FundamentalsProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
 from rhythm.marketdata.provider import MarketDataProvider
+from rhythm.research.service import ResearchService
 
 log = get_logger(__name__)
 
@@ -37,6 +38,7 @@ class AppState:
     freshness: FreshnessMonitor
     events: EventProvider | None = None
     fundamentals: FundamentalsProvider | None = None
+    research: ResearchService | None = None
     _last_ready: bool | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

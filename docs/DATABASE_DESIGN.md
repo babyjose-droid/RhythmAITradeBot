@@ -30,7 +30,7 @@ The rest is the Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1
 
 **Strategies** — `strategy_definitions` (horizon), `strategy_versions` (semver, code hash, params JSON), `strategy_runs` (scheduled/backtest/paper, data snapshot id), `strategy_signals`.
 
-**Research** — `research_packets` (frozen evidence JSON + hash), `research_sources` (url/ref, retrieved_at, trust=untrusted), `ai_assessments` (model, prompt_version_id, raw response ref, validated JSON, validation status, tokens, cost, latency), `prompt_versions`.
+**Research (Phase 7, migration 0007; all append-only)** — `prompt_versions` (id, sha256, system text, instructions), `research_packets` (canonical evidence JSON, sha256 unique, as_of, data_is_mock; untrusted documents live inside the packet, marked `trust: untrusted`), `ai_assessments` (context PAPER/RESEARCH, packet_id, signal_id, provider, model, is_mock, prompt_version, status VALID/INVALID/TIMEOUT/ERROR/BUDGET_EXCEEDED/CYCLE_LIMIT, suggested_action, gate effect, validated output JSON, validation errors, raw excerpt ≤ 4000 chars, tokens, estimated flag, cost, latency, attempts). `strategy_signals.assessment_id` links a gated candidate to its assessment.
 
 **Portfolio** — `virtual_ledgers` (horizon, account_kind PAPER|LIVE, allocated_capital), `positions` (ledger_id, instrument, qty, avg_cost, thesis_id), `cash_movements`, `portfolio_snapshots` (consolidated + per ledger), `theses` (long-term/swing thesis, invalidation, next_review_at).
 

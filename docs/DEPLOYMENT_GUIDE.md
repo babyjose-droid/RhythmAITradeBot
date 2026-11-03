@@ -14,6 +14,16 @@ Every push to `main` that passes all CI checks publishes the API image to GitHub
 - `ghcr.io/babyjose-droid/rhythmaitradebot:sha-<7-char-commit>` — immutable, per commit
 - `ghcr.io/babyjose-droid/rhythmaitradebot-web:main` and `:sha-<commit>` — dashboard image (Phase 3)
 
+Settings added in Phase 7:
+- `RHYTHM_FEATURES__RESEARCH_SERVICE`;
+- `RHYTHM_RESEARCH_PROVIDER` (`none` | `mock` local/test | `anthropic`);
+- for `anthropic`: `RHYTHM_RESEARCH__MODEL` and `RHYTHM_RESEARCH__API_KEY`, the key from the shell or a secret store, never a committed file;
+- `RHYTHM_RESEARCH__DAILY_TOKEN_BUDGET`, `__MAX_ASSESSMENTS_PER_CYCLE`, `__TIMEOUT_SECONDS`, `__MAX_RETRIES`, `__MAX_OUTPUT_TOKENS`;
+- optional cost rates `__INPUT_USD_PER_MTOK` / `__OUTPUT_USD_PER_MTOK`;
+- `__GATE_PAPER_ENTRIES` (default false).
+
+The container needs HTTPS egress to the provider only when `anthropic` is used. On AWS the key will come from Secrets Manager.
+
 Settings added in Phase 6: `RHYTHM_FUNDAMENTALS_PROVIDER` (`none` default; `mock` only in local/test).
 
 Settings added in Phase 5: `RHYTHM_EVENT_PROVIDER` (`none` default; `mock` allowed only in local/test — refused in staging/production like the other mock sources).

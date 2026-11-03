@@ -9,6 +9,7 @@ import {
   orderBadge,
   riskOutcomeTone,
   thesisTone,
+  verdictLabel,
 } from "./status";
 
 describe("visual grammar", () => {
@@ -66,5 +67,13 @@ describe("visual grammar", () => {
     expect(bandPosition(0.02, 0.05, 0.15)).toBe("below");
     expect(bandPosition(0.1, 0.05, 0.15)).toBe("within");
     expect(bandPosition(0.2, 0.05, 0.15)).toBe("above");
+  });
+
+  it("never shows a research failure or downgrade as an approval", () => {
+    expect(verdictLabel("VALID", "CONFIRM")).toEqual({ tone: "ok", label: "confirms candidate" });
+    expect(verdictLabel("VALID", "HOLD").tone).toBe("reduce");
+    expect(verdictLabel("INVALID", null).label).toContain("held for review");
+    expect(verdictLabel("WEIRD", "CONFIRM").tone).toBe("fail");
+    expect(verdictLabel("VALID", "STRONG_BUY").tone).toBe("fail");
   });
 });

@@ -35,6 +35,25 @@ Broker API key + Secret Key; daily access token (JWT, 24 h); Anthropic API key; 
 - Least privilege: separate DB roles for app, migrations, read-only reporting. Network: DB not publicly reachable.
 - Dependencies pinned with hashes; Dependabot / pip-audit / npm audit in CI.
 
+### Research service (Phase 7, as built)
+- **Research API key:**
+  - held as a `SecretStr`;
+  - sent only as the `x-api-key` header, to an `https` base URL;
+  - never logged, stored, put in a prompt or included in an error message (tested);
+  - a placeholder value is refused.
+- **Model output** is untrusted:
+  - size-limited;
+  - strict schema with no order fields;
+  - every source id and number is checked against the frozen packet.
+  A rejected reply is stored only as a raw excerpt for review and is never acted on.
+- **Untrusted documents:**
+  - normalised;
+  - control characters and packet/system delimiter look-alikes removed;
+  - length-capped;
+  - quoted inside the packet as `trust: untrusted`.
+  The system prompt forbids following embedded instructions, and the gate limits any outcome to confirm-or-downgrade.
+- **Import contracts** enforce that research has no path to the broker, order, execution, paper or risk modules, and that the decision core never imports research.
+
 ## 5. Threat model (STRIDE summary)
 
 | Threat | Example | Control |

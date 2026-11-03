@@ -20,6 +20,12 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 7:** no real model has been called. All assessments so far come from the deterministic MOCK provider. The Anthropic provider is tested only against a simulated transport. Model choice and budget (D-08) are open.
+- **Phase 7:** there is no licensed news or filings source. Untrusted documents are only what a user pastes, or event notes from the event provider.
+- **Phase 7:** the validator rejects any number not found in the packet, including numbers in free text. This is deliberately strict and can reject reasonable replies; they then fail closed to REQUIRES_REVIEW.
+- **Phase 7:** MOCK token counts are estimates (chars / 4). Cost is shown only when the owner sets current per-token rates.
+- **Phase 7:** the PAPER entry gate is global (all strategies). There is no human approval flow for REQUIRES_REVIEW yet; that comes in Phase 8.
+- **Phase 7:** a stored candidate's freshness comes from its recorded R4 result. If R4 was not evaluated (for example, a blocked candidate), it is reported as UNKNOWN.
 - **Phase 6:** the only fundamentals source is MOCK (synthetic quarters). Long-term PAPER on real data stays blocked by R21 until a licensed, point-in-time fundamentals vendor with restatement history is configured (B-06 / D-03).
 - **Phase 6:** no corporate-action adjustment of EPS/price (splits/bonus) and no sector data; P/E and P/B use the last close and unadjusted TTM figures.
 - **Phase 6:** long-term positions have no tax-lot / holding-period tracking; the review schedule counts sessions, not calendar dates.

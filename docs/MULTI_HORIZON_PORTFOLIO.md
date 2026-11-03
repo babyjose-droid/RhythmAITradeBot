@@ -40,6 +40,13 @@
 
 ## 4. Evidence packet & Claude assessment (Phase 7)
 
+**As built (Phase 7):**
+- The packet and output fields match the list below, plus `freshness_status`.
+- Validation also rejects symbol/horizon/as_of mismatches, metric values that don't match their cited sources, and CONFIRM without `evidence_sufficient`.
+- The fallback for any failure is REQUIRES_REVIEW.
+- Assessments are advisory unless the optional PAPER entry gate is on. Even then they can only hold a risk-accepted entry or add, never size it, and exits are never gated.
+
+
 Packet fields: symbol, horizon, as_of, data freshness, facts[] (value, unit, source_id, source_ts), derived_metrics[] (formula id, inputs), assumptions[], missing[], untrusted_documents[] (quoted, marked as data). Required output schema: symbol, horizon, as_of, freshness_status, observed_facts (with source refs), bull_case, bear_case, catalysts, invalidation_conditions, key_metrics_with_provenance, suggested_action ∈ decision states, rationale, confidence_explanation, key_uncertainties, change_view_conditions, evidence_sufficient (bool). Validation rejects: unknown source refs, numbers not present in packet, action outside allowed set, missing fields → fallback `NO_ACTION`/`REQUIRES_REVIEW`. Timeout/retry/token budget enforced.
 
 ## 5. Reconciliation

@@ -45,6 +45,35 @@ class FeatureFlags(BaseModel):
     paper_trading: bool = False
 
 
+class ResearchSettings(BaseModel):
+    """Claude research service (Phase 7). Advisory only; off unless configured."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Model id for the Anthropic provider. No default: the owner chooses it (decision D-08).
+    model: str | None = Field(default=None, max_length=100)
+    api_key: SecretStr | None = None  # RHYTHM_RESEARCH__API_KEY; from a secret store, never a file
+    base_url: str = "https://api.anthropic.com"
+    timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    max_retries: int = Field(default=2, ge=0, le=5)
+    max_output_tokens: int = Field(default=1500, ge=256, le=8000)
+    # Budget (D-08): tokens per IST calendar day across all assessments; calls that could
+    # exceed it are not made. Cost is reported only when the owner sets current rates.
+    daily_token_budget: int = Field(default=200_000, ge=0, le=50_000_000)
+    max_assessments_per_cycle: int = Field(default=10, ge=0, le=100)
+    input_usd_per_mtok: float | None = Field(default=None, ge=0)
+    output_usd_per_mtok: float | None = Field(default=None, ge=0)
+    # When true, PAPER entries/adds need a valid CONFIRM; anything else holds them (fail closed).
+    gate_paper_entries: bool = False
+
+    @field_validator("base_url")
+    @classmethod
+    def _https(cls, v: str) -> str:
+        if not v.startswith("https://"):
+            raise ValueError("research base_url must use https")
+        return v.rstrip("/")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RHYTHM_",
@@ -67,6 +96,8 @@ class Settings(BaseSettings):
     broker_adapter: Literal["none", "mock"] = "none"
     event_provider: Literal["none", "mock"] = "none"  # corporate-event calendar (R18)
     fundamentals_provider: Literal["none", "mock"] = "none"  # long-term evidence (R21)
+    research_provider: Literal["none", "mock", "anthropic"] = "none"  # Phase 7, advisory
+    research: ResearchSettings = ResearchSettings()
     freshness_intraday_max_age_seconds: float = Field(default=10.0, gt=0, le=300)
     # Identity recorded in audit events for local, unauthenticated use (auth arrives in Phase 8).
     local_actor_id: str = Field(default="local-owner", min_length=1, max_length=100)
@@ -104,8 +135,21 @@ class Settings(BaseSettings):
                 self.broker_adapter,
                 self.event_provider,
                 self.fundamentals_provider,
+                self.research_provider,
             ):
                 raise ValueError("mock data sources are not allowed outside local/test")
+        if self.research_provider != "none" and not self.features.research_service:
+            raise ValueError("research_provider requires the research_service feature flag")
+        if self.research_provider == "anthropic":
+            key = self.research.api_key.get_secret_value() if self.research.api_key else ""
+            if not key or any(m in key.lower() for m in PLACEHOLDER_MARKERS):
+                raise ValueError(
+                    "research_provider=anthropic needs a real RHYTHM_RESEARCH__API_KEY"
+                )
+            if not self.research.model:
+                raise ValueError("research_provider=anthropic needs RHYTHM_RESEARCH__MODEL")
+        if self.research.gate_paper_entries and self.research_provider == "none":
+            raise ValueError("research gate_paper_entries needs a research_provider")
         if self.features.paper_trading and self.trading_mode is not TradingMode.PAPER:
             raise ValueError("paper_trading feature requires trading_mode=PAPER")
         return self

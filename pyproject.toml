@@ -18,13 +18,13 @@ dependencies = [
   "alembic>=1.14,<2",
   "psycopg[binary]>=3.2,<4",
   "structlog>=24.4",
+  "httpx>=0.27,<1",  # research provider (Anthropic Messages API)
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3",
   "pytest-cov>=6",
-  "httpx>=0.27",
   "hypothesis>=6.100",
   "ruff>=0.8",
   "mypy>=1.13",
@@ -151,6 +151,24 @@ name = "Fundamentals types and the mock fundamentals source are pure"
 type = "forbidden"
 source_modules = ["rhythm.fundamentals.types", "rhythm.fundamentals.mock"]
 forbidden_modules = ["rhythm.api", "rhythm.db", "rhythm.broker", "rhythm.paper", "rhythm.audit"]
+
+[[tool.importlinter.contracts]]
+name = "Research has no path to orders: no broker, order, execution, paper, risk or API imports"
+type = "forbidden"
+source_modules = ["rhythm.research"]
+forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.execution", "rhythm.paper", "rhythm.risk", "rhythm.controls", "rhythm.portfolio", "rhythm.backtest", "rhythm.api"]
+
+[[tool.importlinter.contracts]]
+name = "Decision core never imports research (LLM output reaches it only through the advisor hook)"
+type = "forbidden"
+source_modules = ["rhythm.risk", "rhythm.execution", "rhythm.orders", "rhythm.strategies", "rhythm.backtest", "rhythm.broker"]
+forbidden_modules = ["rhythm.research"]
+
+[[tool.importlinter.contracts]]
+name = "Research packets, schema, prompts, validation, gate and providers are pure"
+type = "forbidden"
+source_modules = ["rhythm.research.packet", "rhythm.research.schema", "rhythm.research.prompts", "rhythm.research.validate", "rhythm.research.gate", "rhythm.research.providers"]
+forbidden_modules = ["rhythm.db", "rhythm.audit", "rhythm.api", "rhythm.paper"]
 
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small

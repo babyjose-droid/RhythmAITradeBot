@@ -139,3 +139,33 @@ export function bandPosition(weight: number, min: number, max: number): "below" 
   if (weight > max) return "above";
   return "within";
 }
+
+/**
+ * Research verdicts (Phase 7). An assessment is advisory: it can only keep a rule-generated
+ * candidate or hold it back. Anything that is not a valid CONFIRM is shown as held, so an
+ * error or malformed reply never looks like an approval.
+ */
+export function verdictLabel(status: string, action: string | null): { tone: "ok" | "reduce" | "fail" | "skip"; label: string } {
+  if (status !== "VALID") {
+    const why: Record<string, string> = {
+      INVALID: "invalid reply — held for review",
+      TIMEOUT: "timed out — held for review",
+      ERROR: "provider error — held for review",
+      BUDGET_EXCEEDED: "budget exhausted — held for review",
+      CYCLE_LIMIT: "cycle limit — held for review",
+    };
+    return { tone: "fail", label: why[status] ?? `unrecognised (${status}) — held for review` };
+  }
+  switch (action) {
+    case "CONFIRM":
+      return { tone: "ok", label: "confirms candidate" };
+    case "HOLD":
+      return { tone: "reduce", label: "downgraded to HOLD" };
+    case "NO_ACTION":
+      return { tone: "reduce", label: "downgraded to NO ACTION" };
+    case "REQUIRES_REVIEW":
+      return { tone: "skip", label: "asks for human review" };
+    default:
+      return { tone: "fail", label: `unrecognised verdict (${String(action)}) — held` };
+  }
+}

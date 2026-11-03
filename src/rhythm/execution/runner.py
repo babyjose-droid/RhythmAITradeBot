@@ -18,6 +18,7 @@ Per completed bar, in this order (no look-ahead):
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
@@ -85,12 +86,28 @@ class RiskRecord:
 
 
 @dataclass(frozen=True)
+class Advice:
+    """An advisory verdict on a risk-accepted entry/add. It can only allow or hold it."""
+
+    allow: bool
+    decision: DecisionState
+    reason: str
+    ref: int | None = None  # e.g. the stored research assessment id
+
+
+# Called only for risk-increasing candidates the risk engine already accepted. It cannot
+# change quantity, price or side: the runner uses only ``allow``.
+Advisor = Callable[[Signal, dict[str, Any], RiskDecision], Advice]
+
+
+@dataclass(frozen=True)
 class SignalRecord:
     signal: Signal
     decision: DecisionState
     risk: RiskDecision
     order_id: str | None
     diagnostics: dict[str, Any]
+    advice: Advice | None = None
 
 
 @dataclass
@@ -114,6 +131,7 @@ class BaseRunner:
     day_start_value: dict[date, Decimal] = field(default_factory=dict)
     last_diagnostics: dict[InstrumentKey, dict[str, Any]] = field(default_factory=dict)
     signal_log: list[SignalRecord] = field(default_factory=list)
+    advisor: Advisor | None = None  # PAPER research gate (Phase 7); None in backtests
 
     @property
     def horizon(self) -> Horizon:
@@ -330,6 +348,12 @@ class BaseRunner:
                 else DecisionState.REJECTED_BY_RISK
             )
             return SignalRecord(sig, dstate, decision, None, diag)
+        advice: Advice | None = None
+        if buy and self.advisor is not None:
+            advice = self.advisor(sig, diag, decision)
+            if not advice.allow:
+                self.risk_log.append(RiskRecord(proposal, state, decision, None))
+                return SignalRecord(sig, advice.decision, decision, None, diag, advice)
         if not buy:
             for o in self.book.working_orders(key):
                 self.book.cancel(o, sig.at, f"strategy {purpose}")
@@ -353,7 +377,7 @@ class BaseRunner:
         if created:
             self.book.transition(order, OrderState.RISK_CHECKED, sig.at, **_summary(decision))
             self.book.submit(order, sig.at)
-        return SignalRecord(sig, sig.decision, decision, order.id, diag)
+        return SignalRecord(sig, sig.decision, decision, order.id, diag, advice)
 
     def _snap_to_tick(self, sig: Signal) -> Signal:
         """Align strategy prices to the instrument's tick, conservatively.
