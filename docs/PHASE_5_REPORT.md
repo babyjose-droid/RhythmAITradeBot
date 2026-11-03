@@ -103,7 +103,7 @@ See KNOWN_LIMITATIONS.md:
 - the cost model is unverified;
 - long-term (Phase 6) has no event or allocation policy yet, so R18 still blocks it.
 
-## Next: Phase 6 (awaiting approval)
+## Next: Phase 6 (done — see PHASE_6_REPORT.md)
 
 - Long-term fundamentals evidence model (licensed data needed, D-03; otherwise MOCK-labelled);
 - thesis and valuation tracking with review schedules;
