@@ -13,6 +13,7 @@ from rhythm.db.models.risk import (
     RiskCheckRow,
     RiskPolicyRow,
 )
+from rhythm.db.models.scheduler import JobRunRow, ScheduledJobRow, SchedulerHeartbeatRow
 from rhythm.db.models.theses import ThesisEventRow, ThesisRow
 from rhythm.db.models.trading import (
     BacktestRun,
@@ -42,6 +43,7 @@ __all__ = [
     "IdempotencyRecord",
     "Instrument",
     "InstrumentSnapshot",
+    "JobRunRow",
     "Ledger",
     "MarketBar",
     "NotificationRow",
@@ -54,6 +56,8 @@ __all__ = [
     "ResearchPacketRow",
     "RiskCheckRow",
     "RiskPolicyRow",
+    "ScheduledJobRow",
+    "SchedulerHeartbeatRow",
     "StrategySignalRow",
     "SystemHealthEvent",
     "ThesisEventRow",

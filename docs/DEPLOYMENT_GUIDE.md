@@ -14,6 +14,13 @@ Every push to `main` that passes all CI checks publishes the API image to GitHub
 - `ghcr.io/babyjose-droid/rhythmaitradebot:sha-<7-char-commit>` — immutable, per commit
 - `ghcr.io/babyjose-droid/rhythmaitradebot-web:main` and `:sha-<commit>` — dashboard image (Phase 3)
 
+Settings added in Phase 9:
+- `RHYTHM_SCHEDULER__EXPECTED` (compose default `true`: readiness then requires a fresh leader heartbeat), `__TICK_SECONDS` (15), `__HEARTBEAT_STALE_SECONDS` (120), `__MAX_CONSECUTIVE_FAILURES` (3), `__MISSED_GRACE_MINUTES` (10);
+- `RHYTHM_METRICS__TOKEN` (bearer token for `/metrics`; required outside local/test);
+- backup service: `BACKUP_RETENTION_DAYS` (14), `BACKUP_INTERVAL_HOURS` (24).
+
+Services: `scheduler` (same image, `rhythm-scheduler`; healthcheck `rhythm-cli scheduler-health`; a second replica only stands by) and `backup` (`postgres:16-alpine`, writes to `./backups`, git-ignored — copy it off the machine). On AWS: an ECS service for the scheduler (desired count 1–2), RDS automated backups plus `pg_dump` to S3, and CloudWatch/Prometheus scraping `/metrics`.
+
 Settings added in Phase 8:
 - `RHYTHM_AUTH__ENABLED` (default `true`; `false` is refused outside local/test);
 - `RHYTHM_AUTH__SECRET_KEY` (at least 32 random characters; encrypts authenticator secrets, so it must stay stable; Secrets Manager on AWS);

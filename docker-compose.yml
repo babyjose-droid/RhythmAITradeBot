@@ -1,5 +1,5 @@
 # Local development stack. Copy .env.example to .env first (placeholders only).
-# Ports are published on 127.0.0.1 only: there is no dashboard authentication until Phase 8.
+# Ports are published on 127.0.0.1 only. Sign-in (Phase 8) is on unless demo.env turns it off.
 name: rhythm
 
 services:
@@ -44,6 +44,9 @@ services:
       RHYTHM_AUTH__SECRET_KEY: ${RHYTHM_AUTH__SECRET_KEY:-}
       RHYTHM_NOTIFICATIONS__WEBHOOK_URL: ${RHYTHM_NOTIFICATIONS__WEBHOOK_URL:-}
       RHYTHM_NOTIFICATIONS__WEBHOOK_MIN_SEVERITY: ${RHYTHM_NOTIFICATIONS__WEBHOOK_MIN_SEVERITY:-warning}
+      # Phase 9: this stack runs the scheduler, so readiness requires its heartbeat.
+      RHYTHM_SCHEDULER__EXPECTED: ${RHYTHM_SCHEDULER__EXPECTED:-true}
+      RHYTHM_METRICS__TOKEN: ${RHYTHM_METRICS__TOKEN:-}
     depends_on:
       db:
         condition: service_healthy
@@ -58,6 +61,43 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  scheduler:
+    # Same image as the API. Runs scheduled jobs (none run until an owner enables them).
+    # A second replica would stand by: only the advisory-lock holder runs jobs.
+    build: .
+    command: ["rhythm-scheduler"]
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "rhythm-cli", "scheduler-health"]
+      interval: 60s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+
+  backup:
+    # Daily pg_dump (custom format + SHA-256) into ./backups, kept BACKUP_RETENTION_DAYS.
+    image: postgres:16-alpine
+    command: ["sh", "/scripts/backup.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-rhythm}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:-rhythm}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   web:

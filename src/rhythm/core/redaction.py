@@ -29,7 +29,7 @@ _VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
             r"(?i)\b(access[_-]?token|api[_-]?key|request[_-]?token|vendor[_-]?key|secret[_-]?key|"
-            r"password|state)=([^&\s\"']+)"
+            r"password|state|token|secret)=([^&\s\"']+)"
         ),
         r"\1=" + REDACTED,
     ),

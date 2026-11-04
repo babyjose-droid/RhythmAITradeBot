@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+import hmac
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Query, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from rhythm.api.health import check_database_and_clock, check_migrations, check_trading_mode
+from rhythm.api.health import (
+    check_database_and_clock,
+    check_migrations,
+    check_scheduler,
+    check_trading_mode,
+)
 from rhythm.api.state import AppState
 from rhythm.audit import AuditLog
 from rhythm.config import LIVE_TRADING_IMPLEMENTED
 from rhythm.core.clock import EXCHANGE_TZ_NAME, to_exchange_local
 from rhythm.db.models import AuditEvent, SystemHealthEvent
 from rhythm.db.session import session_scope
+from rhythm.monitoring import metrics as metrics_mod
 
 router = APIRouter()
 
@@ -79,6 +87,10 @@ def ready(request: Request, response: Response) -> ReadinessOut:
         check_migrations(st.engine),
         check_trading_mode(st.settings.trading_mode),
     ]
+    if st.settings.scheduler.expected:
+        checks.append(
+            check_scheduler(st.engine, st.clock, st.settings.scheduler.heartbeat_stale_seconds)
+        )
     ok = all(c.ok for c in checks)
     response.status_code = status.HTTP_200_OK if ok else status.HTTP_503_SERVICE_UNAVAILABLE
     st.record_readiness(ok, {c.name: c.ok for c in checks})
@@ -172,3 +184,25 @@ def audit_verify(request: Request) -> AuditVerifyOut:
     return AuditVerifyOut(
         ok=res.ok, rows_checked=res.rows_checked, first_bad_id=res.first_bad_id, reason=res.reason
     )
+
+
+@router.get("/metrics", tags=["health"], include_in_schema=False)
+def metrics(request: Request) -> PlainTextResponse:
+    """Prometheus text format. Needs ``Authorization: Bearer <RHYTHM_METRICS__TOKEN>``;
+    without a configured token it is served only in local/test."""
+    st = _state(request)
+    token = st.settings.metrics.token.get_secret_value() if st.settings.metrics.token else ""
+    if token:
+        got = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not hmac.compare_digest(got.encode(), token.encode()):
+            raise HTTPException(401, "metrics token required")
+    elif st.settings.environment.value not in ("local", "test"):
+        raise HTTPException(404, "metrics disabled: set RHYTHM_METRICS__TOKEN")
+    with session_scope(st.session_factory) as s:
+        body = metrics_mod.render(
+            s,
+            st.clock.now(),
+            environment=st.settings.environment.value,
+            trading_mode=st.settings.trading_mode.value,
+        )
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4")

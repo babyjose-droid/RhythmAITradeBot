@@ -104,6 +104,14 @@ class BrokerAdapter(Protocol): ...  # see SHAREKHAN_INTEGRATION.md §11
 - `ResearchService.assess(session, packet, ...)` does the budget check, the call, validation, the gate and persistence, and never raises for provider or output problems.
 - In PAPER cycles the research gate plugs into the runner as an `Advisor` callback. It is invoked only for risk-accepted entries/adds, and it returns allow/hold, nothing else.
 
+**Scheduler (Phase 9):**
+- A separate `rhythm-scheduler` process reuses the API's service layer (same runners, risk engine and audit).
+- Leadership is a PostgreSQL advisory lock.
+- `job_runs` (unique per job and slot) makes every slot run at most once.
+- Each job runs in its own transaction.
+- Health transitions become `system_health_events` plus notifications.
+- `/metrics` exposes Prometheus-style counters and gauges.
+
 **Key principle on LLM authority:** a candidate action must originate from deterministic strategy rules. Claude's assessment may confirm, downgrade to HOLD/NO_ACTION, or flag REQUIRES_REVIEW. It may never upgrade size, change limits, or create an order on its own. (Product-owner decision D-07 asks whether Claude may *originate* long-term ideas for human review only.)
 
 ## 5. Ledgers: separate strategy books, one broker truth

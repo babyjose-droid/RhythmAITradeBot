@@ -195,3 +195,23 @@ export function canAct(role: string | undefined, action: "own" | "approve"): boo
   if (role === "owner") return true;
   return action === "approve" && role === "approver";
 }
+
+/** Scheduler run and component states (Phase 9). Unknown values fail closed (shown red). */
+export function runTone(status: string | null): "ok" | "reduce" | "fail" | "skip" {
+  switch (status) {
+    case "SUCCESS":
+      return "ok";
+    case "RUNNING":
+    case "MISSED":
+    case "SKIPPED":
+      return "reduce";
+    case null:
+      return "skip";
+    default:
+      return "fail";
+  }
+}
+
+export function healthTone(status: string): "ok" | "reduce" | "fail" {
+  return status === "ok" ? "ok" : status === "degraded" ? "reduce" : "fail";
+}

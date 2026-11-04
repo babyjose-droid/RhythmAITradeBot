@@ -42,6 +42,8 @@ The rest is the Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1
 
 **Phase 8 (migration 0008)** — `users` (username, role owner/approver/viewer, scrypt hash, Fernet-sealed TOTP secret, last TOTP step, failed logins, lock/disable times), `auth_sessions` (SHA-256 of the cookie token as key, CSRF hash, created/last-seen/expiry/re-auth/revoked times, IP, user agent), `approvals` (queued REQUIRES_REVIEW candidate snapshot, status PENDING/APPROVED/REJECTED/EXPIRED/FAILED, decision who/when/IP/reason, risk re-check, order link), `notifications` (kind, severity, title/body/link, read state, webhook outbox status/attempts/next attempt/error).
 
+**Phase 9 (migration 0009)** — `scheduled_jobs` (name, kind, params, schedule + arg, trading-days flag, enabled, next/last run, last status/error, consecutive failures, disabled reason), `job_runs` (job, slot — **unique per job+slot** — trigger, timings, status RUNNING/SUCCESS/FAILED/SKIPPED/MISSED, instance, detail), `scheduler_heartbeats` (instance, leader flag, last beat).
+
 **Ops** — `approvals`, `audit_events` (append-only, `prev_hash`, `row_hash`), `notifications`, `scheduled_jobs`, `system_health_events`.
 
 ## 2. Integrity rules

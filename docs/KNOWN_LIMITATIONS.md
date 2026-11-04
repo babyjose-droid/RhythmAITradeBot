@@ -20,10 +20,14 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 9:** the scheduler runs only the jobs an owner has created and enabled; there are no default jobs. Missed slots (scheduler down for more than 10 minutes) are not run late by design. Run a cycle manually if needed.
+- **Phase 9:** backups are written next to the database (`./backups` on the same machine), so copy them off-host. The restore drill is a script and runbook step, with no dashboard button.
+- **Phase 9:** `/metrics` is pull-only; alert rules need an external Prometheus or CloudWatch. In-app alarms come from the health-check job, which must be scheduled.
+- **Phase 9:** the soak and load tests ran on MOCK data in a cloud session (5 simulated days; 157 req/s). Multi-week operation on real data waits for the Sharekhan connection.
+- **Phase 9:** `/health/ready` reports `clock_skew` against the database clock. A test or demo with a frozen clock is therefore not ready, which is intended.
 - **Phase 8:** the per-IP login limiter is in memory, per API process. Behind the dashboard proxy the API sees the proxy's address, so per-IP limits and recorded IPs reflect the proxy. Per-user lockout still applies.
 - **Phase 8:** there is no QR code for enrolment (enter the secret manually or open the `otpauth://` URI), and no WebAuthn or recovery codes. If an authenticator is lost, an owner runs `rhythm-cli user-reset-mfa`.
 - **Phase 8:** `Secure` cookies need HTTPS when hosted (the AWS deployment brings TLS). Locally on `http://127.0.0.1` cookies are not marked Secure.
-- **Phase 8:** there is no scheduler yet: cycles run when triggered (dashboard, API or an external cron). Phase 9 adds one.
 - **Phase 8:** the kill switch and approvals queue are global across PAPER accounts. Approvals are never re-queued automatically after expiry; the next cycle files a new request if the rules still produce the candidate.
 - **Phase 7:** no real model has been called. All assessments so far come from the deterministic MOCK provider. The Anthropic provider is tested only against a simulated transport. Model choice and budget (D-08) are open.
 - **Phase 7:** there is no licensed news or filings source. Untrusted documents are only what a user pastes, or event notes from the event provider.

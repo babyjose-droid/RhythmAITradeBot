@@ -36,6 +36,7 @@ dev = [
 [project.scripts]
 rhythm-api = "rhythm.api.server:main"
 rhythm-cli = "rhythm.cli:main"
+rhythm-scheduler = "rhythm.scheduler.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -68,9 +69,11 @@ plugins = ["pydantic.mypy"]
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m 'not perf and not soak'"
 markers = [
   "integration: requires a PostgreSQL database (TEST_DATABASE_URL)",
+  "perf: latency benchmarks (run with -m perf)",
+  "soak: multi-day simulated operation (run with -m soak)",
 ]
 filterwarnings = ["error::DeprecationWarning:rhythm.*"]
 
@@ -176,6 +179,12 @@ name = "Auth and notifications never reach orders, the broker, research or the A
 type = "forbidden"
 source_modules = ["rhythm.auth", "rhythm.notifications"]
 forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.execution", "rhythm.paper", "rhythm.risk", "rhythm.research", "rhythm.api"]
+
+[[tool.importlinter.contracts]]
+name = "Monitoring only reads state: no broker, order path, research, paper service or API"
+type = "forbidden"
+source_modules = ["rhythm.monitoring"]
+forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.research", "rhythm.api", "rhythm.paper"]
 
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small

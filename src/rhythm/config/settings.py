@@ -114,6 +114,29 @@ class NotificationSettings(BaseModel):
         return v
 
 
+class SchedulerSettings(BaseModel):
+    """Built-in job scheduler (Phase 9). Jobs are rows in ``scheduled_jobs``; none run unless
+    an owner creates and enables them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # True when a scheduler process is deployed: readiness then requires a fresh heartbeat.
+    expected: bool = False
+    tick_seconds: float = Field(default=15.0, ge=1, le=300)
+    heartbeat_stale_seconds: int = Field(default=120, ge=30, le=3600)
+    max_consecutive_failures: int = Field(default=3, ge=1, le=20)
+    # A slot missed by more than this (scheduler down) is recorded as MISSED, not run late.
+    missed_grace_minutes: int = Field(default=10, ge=1, le=240)
+
+
+class MetricsSettings(BaseModel):
+    """Prometheus-style ``/metrics``. Without a token it is served only in local/test."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    token: SecretStr | None = None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RHYTHM_",
@@ -140,6 +163,8 @@ class Settings(BaseSettings):
     research: ResearchSettings = ResearchSettings()
     auth: AuthSettings = AuthSettings()
     notifications: NotificationSettings = NotificationSettings()
+    scheduler: SchedulerSettings = SchedulerSettings()
+    metrics: MetricsSettings = MetricsSettings()
     freshness_intraday_max_age_seconds: float = Field(default=10.0, gt=0, le=300)
     # Identity recorded in audit events for local, unauthenticated use (auth arrives in Phase 8).
     local_actor_id: str = Field(default="local-owner", min_length=1, max_length=100)

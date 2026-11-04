@@ -1,20 +1,92 @@
 # Operations Runbook
 
-**Status:** Phase 0 skeleton plus Phase 4 control procedures (below). Full procedures are written and rehearsed in Phases 8–9.
+**Status:** Phase 9: scheduler, monitoring, backups/restore drill and incident playbooks written and rehearsed in the session (see PHASE_9_REPORT.md). Phase 4–8 procedures below.
 
 ## Daily (trading days, IST)
 
 1. Before 09:00 — owner completes Sharekhan login (token valid 24 h, no refresh documented); system verifies session, clock sync, data feeds, reconciliation; mode shown on dashboard.
 2. 09:15–15:30 — monitor freshness, risk utilisation, alerts.
-3. After close — EOD reconciliation, scrip-master snapshot archive, backups, daily report (PAPER labelled).
+3. After close — the scheduler runs the swing/long-term cycles at 15:45 IST. Then check the Approvals queue, critical notifications, job failures, and that last night's backup exists in `./backups`.
 
-## Incidents (to be detailed)
+## Scheduler (Phase 9)
 
-Data feed stale · broker 403/token expired · 429 storm · RMS down (502) · reconciliation break · UNKNOWN orders · kill-switch activation & release · DB failover/restore · suspected secret leak (rotate API key/Secret Key with Sharekhan, revoke tokens).
+- **Process:** `rhythm-scheduler` (compose service `scheduler`). Run one per deployment; extra replicas stand by. Only the holder of the PostgreSQL advisory lock runs jobs, and `job_runs` is unique per (job, slot), so a slot can never run twice.
+- **Jobs:** create and enable them under Automation → Scheduled jobs (owner + re-auth). They are created disabled.
+  - Intraday PAPER cycles run every 5 minutes, 09:20–15:30 IST.
+  - Swing and long-term cycles run at 15:45 IST on trading days.
+  - Suggested extras:
+    - event-calendar sync daily at 08:30;
+    - fundamentals sync after the close;
+    - a health check every 5 minutes;
+    - an audit-chain check daily at 18:00.
+- **Missed slots:** if the scheduler was down for longer than `missed_grace_minutes` (10), the missed slots are recorded once as MISSED and **not** run late. Cycles then resume from the next slot.
+- **Failures:** each run is its own transaction, so a failure leaves no partial writes. Each failure raises a warning notification. After 3 in a row the job is **auto-disabled** with a critical notification. Fix the cause (see the run's error) and re-enable it.
+
+## Monitoring and alarms (Phase 9)
+
+- **Readiness:** `/health/ready` includes a `scheduler` check when `RHYTHM_SCHEDULER__EXPECTED=true` (the compose default). A leader heartbeat older than 120 s makes the API **not ready**.
+- **CLI check:** `rhythm-cli scheduler-health` exits 0 or 1 (it is the container healthcheck).
+- **Health-check job** (components: kill switch, reconciliation, scheduler, jobs, webhook backlog):
+  - stores every state change in `system_health_events`;
+  - notifies down → critical, degraded → warning, recovered → info;
+  - repeats nothing while a state is steady.
+- **Metrics:** `GET /metrics` in Prometheus text format, with `Authorization: Bearer $RHYTHM_METRICS__TOKEN`; without a token it is served in local/test only. Suggested alerts:
+  - `rhythm_scheduler_heartbeat_age_seconds > 120`;
+  - `rhythm_kill_switch_active == 1`;
+  - `rhythm_reconciliation_ok == 0`;
+  - `rhythm_job_consecutive_failures > 0`;
+  - `rhythm_webhook_backlog{status="FAILED"} > 0`;
+  - `rhythm_approvals_pending > 0` near the close;
+  - HTTP 5xx rate and p95 latency from `rhythm_http_request_duration_seconds`.
+
+## Backups and restore (Phase 9)
+
+**Backups**
+- The compose `backup` service runs `scripts/backup.sh` daily.
+- Each run writes a `pg_dump` custom-format archive plus a `.sha256` file into `./backups` (git-ignored; it contains account data, so keep it private).
+- Dumps older than 14 days are deleted.
+- A dump is only renamed into place after `pg_restore --list` has read it back.
+
+**Restore drill** (monthly, and after any schema change). With Docker on the Mac:
+```bash
+cd ~/Projects/rhythm-ai-trader
+docker compose run --rm -e VERIFY_CMD=none -e KEEP_DRILL_DB=1 backup sh /scripts/restore_drill.sh
+docker compose exec api rhythm-cli restore-verify --database-name rhythm_restore_drill
+docker compose exec db dropdb -U rhythm rhythm_restore_drill
+```
+On a machine with PostgreSQL tools and the Python package, `scripts/restore_drill.sh` does all three steps in one go (it was run like that for the Phase 9 report).
+
+The drill:
+1. checks the SHA-256;
+2. restores into a scratch `rhythm_restore_drill` database (it refuses any other name);
+3. runs `rhythm-cli restore-verify` (schema at head, audit hash chain intact, row counts);
+4. drops the scratch database.
+
+**Real restore (data loss)**
+1. Stop `api`, `scheduler` and `web`.
+2. `pg_restore --clean --if-exists --no-owner -d rhythm <dump>`.
+3. `docker compose run --rm migrate`.
+4. Start the services.
+5. Run a reconciliation for every PAPER account and `GET /v1/audit/verify`.
+6. Check the Approvals queue: requests that expired during the outage stay expired.
+
+## Incidents
+
+| Symptom | First checks | Action |
+|---|---|---|
+| Dashboard says "not ready" | `/health/ready` checks | **database:** `docker compose ps db`, disk space. **migrations:** `docker compose run --rm migrate`. **scheduler:** `docker compose logs scheduler`, restart it. **clock_skew:** fix host NTP. |
+| Scheduler heartbeat stale | `docker compose logs scheduler`; `rhythm-cli scheduler-health` | Restart the service. Slots missed by more than 10 minutes show as MISSED and are not run late, which is intended. |
+| Job auto-disabled | Automation → job → recent runs (error) | Fix the cause (missing provider, deleted watchlist, paper mode off), then re-enable (owner + re-auth). |
+| Reconciliation break (critical alarm; kill switch is on) | Audit & reconciliation → differences | Find the cause before releasing the kill switch. Release needs owner + re-auth. |
+| Audit chain broken (critical; kill switch is on) | `GET /v1/audit/verify` → first bad row | Treat as tampering or a storage fault. Restore from the last backup that verifies, then investigate. |
+| Webhook FAILED | Notifications → webhook column | Check the endpoint and URL secret. In-app notifications are unaffected. |
+| Data stale / market data down | Cycle `skipped` reasons; freshness | Entries are blocked automatically (R4); exits still work. Wait, or switch the source. |
+| Suspected secret leak | — | Rotate `RHYTHM_AUTH__SECRET_KEY` only together with an MFA reset for all users. Rotate the API keys at the provider, the webhook URL and the metrics token. Revoke sessions by disabling and re-enabling users. |
+| Broker 403 / token expired (after the Sharekhan connection exists) | — | Daily login required. The system degrades to research-only, fail closed. |
 
 ## Health
 
-`/health/live`, `/health/ready`, scheduler heartbeat, `system_health_events`.
+`/health/live`, `/health/ready` (including the scheduler heartbeat), `/metrics`, `system_health_events`, and the notifications inbox.
 
 ## Swing routine (PAPER, Phase 5)
 

@@ -30,6 +30,9 @@ from rhythm.api.routes import (
     trading,
     watchlists,
 )
+from rhythm.api.routes import (
+    scheduler as scheduler_routes,
+)
 from rhythm.api.state import AppState
 from rhythm.audit import ActorType, AuditLog
 from rhythm.auth.service import AuthService
@@ -48,6 +51,7 @@ from rhythm.marketdata.freshness import FreshnessPolicy
 from rhythm.marketdata.mock import MockMarketDataProvider
 from rhythm.marketdata.monitor import FreshnessMonitor
 from rhythm.marketdata.provider import MarketDataProvider
+from rhythm.monitoring import metrics
 from rhythm.notifications import service as notifications
 from rhythm.notifications.dispatcher import WebhookDispatcher
 from rhythm.research.providers import AnthropicProvider, MockResearchProvider, ResearchProvider
@@ -223,6 +227,13 @@ def create_app(
         structlog.contextvars.bind_contextvars(request_id=request_id[:64])
         started = time.perf_counter()
         response = await call_next(request)
+        route = request.scope.get("route")
+        metrics.REGISTRY.observe_request(
+            request.method,
+            str(getattr(route, "path", "unmatched")),
+            response.status_code,
+            time.perf_counter() - started,
+        )
         response.headers["x-request-id"] = request_id[:64]
         response.headers["x-trading-mode"] = settings.trading_mode.value
         log.info(
@@ -265,6 +276,7 @@ def create_app(
         swing.router,
         research.router,
         ops.router,
+        scheduler_routes.router,
     ):
         app.include_router(r, dependencies=guarded)
     return app

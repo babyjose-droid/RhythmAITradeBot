@@ -82,6 +82,62 @@ def _users(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _restore_verify(url: str) -> int:
+    """Used by the restore drill on a scratch copy: never point it at production writes."""
+    from sqlalchemy import func, select  # noqa: PLC0415 — only this command needs them
+
+    from rhythm.db.migrate import current_revision, head_revision  # noqa: PLC0415
+    from rhythm.db.models import AuditEvent, OrderRow, PaperAccount  # noqa: PLC0415
+
+    engine = create_db_engine(url)
+    try:
+        cur, head = current_revision(engine), head_revision()
+        with session_scope(create_session_factory(engine)) as s:
+            ver = AuditLog.verify(s)
+            counts = {
+                "audit_events": s.execute(
+                    select(func.count()).select_from(AuditEvent)
+                ).scalar_one(),
+                "paper_accounts": s.execute(
+                    select(func.count()).select_from(PaperAccount)
+                ).scalar_one(),
+                "orders": s.execute(select(func.count()).select_from(OrderRow)).scalar_one(),
+            }
+    finally:
+        engine.dispose()
+    ok = cur == head and ver.ok
+    _print(
+        {
+            "ok": ok,
+            "schema": {"current": cur, "head": head},
+            "audit_chain": {
+                "ok": ver.ok,
+                "rows": ver.rows_checked,
+                "first_bad_id": ver.first_bad_id,
+            },
+            "counts": counts,
+        }
+    )
+    return 0 if ok else 1
+
+
+def _scheduler_health() -> int:
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from rhythm.monitoring.health import leader_heartbeat_age  # noqa: PLC0415
+
+    settings = get_settings()
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    try:
+        with session_scope(create_session_factory(engine)) as s:
+            age = leader_heartbeat_age(s, datetime.now(UTC))
+    finally:
+        engine.dispose()
+    ok = age is not None and age <= settings.scheduler.heartbeat_stale_seconds
+    _print({"ok": ok, "leader_heartbeat_age_seconds": age})
+    return 0 if ok else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="rhythm-cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -112,6 +168,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_bt.add_argument("--symbols", default="NSE:MOCKA,NSE:MOCKB,NSE:MOCKC")
     p_bt.add_argument("--days", type=int, default=30)
     p_bt.add_argument("--capital", default="1000000")
+
+    p_rv = sub.add_parser(
+        "restore-verify", help="check a restored database: schema at head, audit chain intact"
+    )
+    target = p_rv.add_mutually_exclusive_group(required=True)
+    target.add_argument("--database-url")
+    target.add_argument(
+        "--database-name", help="same server and credentials as RHYTHM_DATABASE_URL, other database"
+    )
+    sub.add_parser("scheduler-health", help="exit 0 if a leader scheduler beat recently")
 
     p_user = sub.add_parser(
         "user-create", help="create a dashboard user (password + authenticator app)"
@@ -234,6 +300,18 @@ def _run(args: argparse.Namespace) -> int:
             run_id = run.id
         _print({"source": "MOCK", "run_id": run_id, "run_hash": bt.run_hash, **bt.metrics})
         return 0
+
+    if args.cmd == "restore-verify":
+        url = args.database_url
+        if url is None:
+            if "drill" not in args.database_name:
+                sys.stderr.write("refusing: --database-name must contain 'drill'\n")
+                return 2
+            base = settings.database_url.get_secret_value()
+            url = base.rsplit("/", 1)[0] + "/" + args.database_name
+        return _restore_verify(url)
+    if args.cmd == "scheduler-health":
+        return _scheduler_health()
 
     if args.cmd in ("user-create", "user-reset-mfa", "user-enable"):
         return _users(args, settings)

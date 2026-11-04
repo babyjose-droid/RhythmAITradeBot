@@ -51,5 +51,24 @@ def check_migrations(engine: Engine) -> CheckResult:
     )
 
 
+def check_scheduler(engine: Engine, clock: Clock, stale_after: int) -> CheckResult:
+    """Only when a scheduler is expected: its leader must have beaten recently."""
+    try:
+        with engine.connect() as conn:
+            beat = conn.execute(
+                text("SELECT max(last_beat_at) FROM scheduler_heartbeats WHERE is_leader")
+            ).scalar_one_or_none()
+    except Exception as exc:
+        return CheckResult("scheduler", False, {"error": type(exc).__name__})
+    if beat is None:
+        return CheckResult("scheduler", False, {"error": "no leader heartbeat yet"})
+    age = (ensure_utc(clock.now()) - ensure_utc(beat)).total_seconds()
+    return CheckResult(
+        "scheduler",
+        age <= stale_after,
+        {"heartbeat_age_seconds": round(age, 1), "stale_after": stale_after},
+    )
+
+
 def check_trading_mode(mode: TradingMode) -> CheckResult:
     return CheckResult("trading_mode", mode is not TradingMode.LIVE, {"mode": mode.value})

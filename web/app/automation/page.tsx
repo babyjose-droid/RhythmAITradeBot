@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { SchedulerPanel } from "@/components/SchedulerPanel";
 import { useMe } from "@/components/Session";
 import { ErrorBox, MockTag, useData, when } from "@/components/ui";
 import { api, type Automation, type PaperAccount, type Watchlist } from "@/lib/api";
@@ -92,12 +93,15 @@ export default function AutomationCentre() {
               </tr>
               <tr>
                 <td>Scheduler</td>
-                <td className="muted">{d.scheduler.note}</td>
+                <td className="muted">
+                  {d.scheduler.enabled_jobs} of {d.scheduler.jobs} job(s) enabled · {d.scheduler.note}
+                </td>
               </tr>
             </tbody>
           </table>
         </section>
       )}
+      <SchedulerPanel owner={owner} />
       <section className="card paper-frame">
         <h2>
           Strategies <span className="tag-paper">PAPER</span>

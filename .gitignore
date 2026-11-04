@@ -6,6 +6,9 @@
 *.key
 secrets/
 
+# Database backups (Phase 9) — contain account data, never commit
+backups/
+
 # Python
 __pycache__/
 *.py[cod]

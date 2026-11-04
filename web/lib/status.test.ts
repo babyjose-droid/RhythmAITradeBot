@@ -13,6 +13,8 @@ import {
   approvalTone,
   severityTone,
   canAct,
+  runTone,
+  healthTone,
 } from "./status";
 
 describe("visual grammar", () => {
@@ -90,5 +92,17 @@ describe("visual grammar", () => {
     expect(canAct("approver", "approve")).toBe(true);
     expect(canAct("approver", "own")).toBe(false);
     expect(canAct(undefined, "own")).toBe(false);
+  });
+
+  it("shows scheduler runs and component health, failing closed", () => {
+    expect(runTone("SUCCESS")).toBe("ok");
+    expect(runTone("MISSED")).toBe("reduce");
+    expect(runTone("FAILED")).toBe("fail");
+    expect(runTone("WHAT")).toBe("fail");
+    expect(runTone(null)).toBe("skip");
+    expect(healthTone("ok")).toBe("ok");
+    expect(healthTone("degraded")).toBe("reduce");
+    expect(healthTone("down")).toBe("fail");
+    expect(healthTone("???")).toBe("fail");
   });
 });

@@ -74,6 +74,11 @@ Broker API key + Secret Key; daily access token (JWT, 24 h); Anthropic API key; 
 - The signed-in username is the actor of every audit event.
 - Approvals record user, time, IP and reason.
 
+### Operations (Phase 9, as built)
+- **`/metrics`:** needs a bearer token (`RHYTHM_METRICS__TOKEN`, compared in constant time) outside local/test. It exposes counts and states only: no prices, positions, identifiers or secrets.
+- **Backups:** contain the full database (users, sealed TOTP secrets, audit log), so treat them as secrets. They live in git-ignored `./backups` and should be stored encrypted when copied off-host. The restore drill only restores into a database whose name contains "drill".
+- **Scheduler:** job errors are redacted (including bare `token=` / `secret=` values) before they are stored, logged or notified. Scheduled actions are audited as actor `scheduler` (type SYSTEM). Creating or enabling jobs needs owner + re-auth.
+
 ### Research service (Phase 7, as built)
 - **Research API key:**
   - held as a `SecretStr`;

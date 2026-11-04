@@ -31,6 +31,7 @@ PUBLIC = frozenset(
         ("GET", "/health/ready"),
         ("GET", "/v1/auth/status"),
         ("POST", "/v1/auth/login"),
+        ("GET", "/metrics"),  # guarded by its own bearer token (see system.metrics)
     }
 )
 # Any signed-in user, any role (their own session and inbox).
@@ -59,6 +60,8 @@ SENSITIVE = frozenset(
         ("POST", "/v1/users/{username}/disable"),
         ("POST", "/v1/users/{username}/enable"),
         ("POST", "/v1/users/{username}/reset-mfa"),
+        ("POST", "/v1/scheduler/jobs"),
+        ("POST", "/v1/scheduler/jobs/{job_id}/enable"),
     }
 )
 OWNER_READ = frozenset({("GET", "/v1/users")})

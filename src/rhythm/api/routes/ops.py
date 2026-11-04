@@ -12,7 +12,8 @@ from rhythm.api.auth import actor, client_ip
 from rhythm.api.deps import SessionDep, StateDep
 from rhythm.api.idempotency import IdempotencyKey, run_idempotent
 from rhythm.controls import service as controls
-from rhythm.db.models import ApprovalRow, AuditEvent
+from rhythm.db.models import ApprovalRow, AuditEvent, ScheduledJobRow
+from rhythm.monitoring import health
 from rhythm.notifications import service as notes
 from rhythm.paper import approvals
 from rhythm.paper import service as paper
@@ -165,6 +166,7 @@ def automation(state: StateDep, session: SessionDep) -> dict[str, Any]:
     ).scalar_one()
     st = state.settings
     wh = st.notifications.webhook_url
+    jobs_all = list(session.execute(select(ScheduledJobRow)).scalars())
     return {
         "trading_mode": st.trading_mode.value,
         "kill_switch_active": ctl.kill_switch_active,
@@ -195,8 +197,12 @@ def automation(state: StateDep, session: SessionDep) -> dict[str, Any]:
             "min_severity": st.notifications.webhook_min_severity,
         },
         "scheduler": {
-            "configured": False,
-            "note": "Cycles run when triggered (dashboard, API or an external scheduler). "
-            "A built-in scheduler with health checks is planned for Phase 9.",
+            "configured": bool(jobs_all),
+            "expected": st.scheduler.expected,
+            "enabled_jobs": sum(1 for j in jobs_all if j.enabled),
+            "jobs": len(jobs_all),
+            "leader_heartbeat_age_seconds": health.leader_heartbeat_age(session, state.clock.now()),
+            "note": "Jobs run in the rhythm-scheduler process (one leader; one run per slot). "
+            "Create and enable them under Automation → Scheduled jobs.",
         },
     }

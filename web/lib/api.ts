@@ -513,7 +513,14 @@ export interface Automation {
   approvals: { policy: string; pending: number };
   research: { provider: string; gate_paper_entries: boolean };
   notifications: { webhook_configured: boolean; min_severity: string };
-  scheduler: { configured: boolean; note: string };
+  scheduler: {
+    configured: boolean;
+    note: string;
+    expected?: boolean;
+    enabled_jobs?: number;
+    jobs?: number;
+    leader_heartbeat_age_seconds?: number | null;
+  };
 }
 
 export interface UserRowOut {
@@ -532,4 +539,46 @@ export interface Enrollment {
   totp_secret: string;
   provisioning_uri: string;
   note: string;
+}
+
+// ------------------------------------------------------------------ Phase 9
+export interface ScheduledJob {
+  id: number;
+  name: string;
+  kind: "paper_cycle" | "events_sync" | "fundamentals_sync" | "health_check" | "audit_verify";
+  params: Record<string, unknown>;
+  schedule: "intraday_5m" | "after_close" | "daily_at" | "every_minutes";
+  schedule_arg: string | null;
+  trading_days_only: boolean;
+  enabled: boolean;
+  created_at: string;
+  created_by: string;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+  disabled_reason: string | null;
+}
+
+export interface JobRun {
+  id: number;
+  job_id: number;
+  slot: string;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  status: "RUNNING" | "SUCCESS" | "FAILED" | "SKIPPED" | "MISSED";
+  duration_ms: number | null;
+  instance: string;
+  detail: Record<string, unknown>;
+}
+
+export interface SchedulerStatus {
+  expected: boolean;
+  tick_seconds: number;
+  leader_heartbeat_age_seconds: number | null;
+  stale_after_seconds: number;
+  instances: { instance: string; is_leader: boolean; started_at: string; last_beat_at: string; age_seconds: number }[];
+  health: { component: string; status: "ok" | "degraded" | "down"; detail: Record<string, unknown> }[];
 }

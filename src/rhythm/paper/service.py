@@ -78,6 +78,7 @@ from rhythm.risk.policy import RiskPolicy
 from rhythm.strategies.base import DecisionState, Signal, SignalType, Strategy, params_hash
 from rhythm.strategies.intraday_orb import IntradayOrbVwap
 
+SYSTEM_ACTORS = frozenset({"scheduler"})  # cycles started by the built-in scheduler
 DISABLED_MSG = "PAPER cycles need RHYTHM_TRADING_MODE=PAPER and RHYTHM_FEATURES__PAPER_TRADING=true"
 
 
@@ -1047,7 +1048,7 @@ def _finish(
         audit.append(
             session,
             event_type=event_type,
-            actor_type=ActorType.USER,
+            actor_type=ActorType.SYSTEM if actor_id in SYSTEM_ACTORS else ActorType.USER,
             actor_id=actor_id,
             subject_type="paper_account",
             subject_id=str(acct.id),

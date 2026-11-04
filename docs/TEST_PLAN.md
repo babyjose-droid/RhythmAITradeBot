@@ -2,6 +2,29 @@
 
 **Status:** Phase 5: 322 Python tests (unit + integration on real PostgreSQL) and 6 web tests, all passing on 2026-11-01. Exact output is in the PHASE_1–5 reports.
 
+## Phase 9 coverage
+
+- Unit (`test_phase9_core.py`, 9): schedule slots on the exchange calendar (75 intraday slots 09:20–15:30, after close 15:45, daily_at, every_minutes, weekends skipped, missed-slot counting, validation); metrics text format and escaping.
+- Integration and failure injection (`test_phase9_api.py`, 12):
+  - job validation; jobs disabled by default; a slot runs once and creates the rules' PAPER order;
+  - one leader with standby takeover; duplicate slot refused (code and database constraint);
+  - missed slots recorded, not run late;
+  - injected failure rolls back, is redacted, and auto-disables with alarms;
+  - market-data outage → skipped, no orders;
+  - database outage → loop survives and recovers;
+  - readiness depends on the heartbeat;
+  - health alarms only on transitions;
+  - sync and audit jobs; run-now; `/metrics` with its token.
+- `pytest -m perf` (`test_phase9_perf.py`): risk evaluation p95 < 50 ms; 15 dashboard endpoints p95 < 300 ms.
+- `pytest -m soak` (`test_phase9_soak.py`, `SOAK_DAYS`, default 5): continuous scheduler-only operation. Asserts:
+  - every slot succeeded exactly once (no FAILED or MISSED);
+  - intraday books flat after each close;
+  - reconciliation always OK and the audit chain intact;
+  - bounded memory.
+- `scripts/loadtest.py`: concurrent GET load against a live API; fails on p95 > 300 ms or any error.
+- Rehearsals (manual, recorded in PHASE_9_REPORT): backup → restore drill; tampered dump rejected; live scheduler process with readiness flip.
+- Perf and soak are excluded from the default run (`-m 'not perf and not soak'` in pytest addopts).
+
 ## Phase 8 coverage
 
 - Unit (`test_phase8_core.py`, 10):
