@@ -6,7 +6,7 @@
 
 | ID | Blocker | Impact | Unblocks with |
 |---|---|---|---|
-| B-01 | SEBI/exchange retail-algo requirements (static IP, algo ID/registration, tagging) not verified; Sharekhan docs silent | Any live order path; hosting design | Sharekhan written confirmation + primary circulars |
+| B-01 | SEBI retail-algo circular **verified** 2026-11-04 (static IP, OAuth+2FA, exchange algo-ID tagging, registration above an OPS threshold; applicable 1 Aug 2025). Exchange standards, the threshold number and Sharekhan's procedures **not verified**; Sharekhan docs silent | Any live order path; hosting design | Sharekhan written confirmation + primary circulars |
 | B-02 | Cash-equity `productType` for intraday vs delivery unclear (`INVESTMENT/BIGTRADE/BIGTRADE+` vs `CNC/MIS` in samples); auto square-off time unknown | Intraday ledger semantics, end-of-session policy, cross-horizon netting | Sharekhan confirmation |
 | B-03 | Rate limits: "up to 30 req/s" (marketing) vs FAQ placeholder "XX"; data-endpoint limits unknown | Throttling config | Sharekhan confirmation; conservative defaults meanwhile |
 | B-04 | Redirect-URL registration for the login flow undocumented | Real login (Phase 2 read-only verification) | Sharekhan / API portal |
@@ -20,6 +20,7 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Phase 10:** live trading is not implemented and the review verdict is NOT READY (see LIVE_READINESS_REVIEW.md). The orders-per-second threshold, the NSE/BSE implementation standards and Sharekhan's static-IP and algo-ID procedure are unverified; web search was unavailable and NSE refused automated fetches.
 - **Phase 9:** the scheduler runs only the jobs an owner has created and enabled; there are no default jobs. Missed slots (scheduler down for more than 10 minutes) are not run late by design. Run a cycle manually if needed.
 - **Phase 9:** backups are written next to the database (`./backups` on the same machine), so copy them off-host. The restore drill is a script and runbook step, with no dashboard button.
 - **Phase 9:** `/metrics` is pull-only; alert rules need an external Prometheus or CloudWatch. In-app alarms come from the health-check job, which must be scheduled.

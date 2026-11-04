@@ -17,6 +17,7 @@ from rhythm.monitoring import health
 from rhythm.notifications import service as notes
 from rhythm.paper import approvals
 from rhythm.paper import service as paper
+from rhythm.readiness import gates as readiness
 from rhythm.strategies.registry import STRATEGIES
 
 router = APIRouter(tags=["operations"])
@@ -205,4 +206,18 @@ def automation(state: StateDep, session: SessionDep) -> dict[str, Any]:
             "note": "Jobs run in the rhythm-scheduler process (one leader; one run per slot). "
             "Create and enable them under Automation → Scheduled jobs.",
         },
+    }
+
+
+# ---------------------------------------------------------------------------- Phase 10
+@router.get("/v1/system/live-readiness")
+def live_readiness(state: StateDep, session: SessionDep) -> dict[str, Any]:
+    """Review only: evaluates the live-readiness gates. It changes nothing."""
+    now = state.clock.now()
+    review = readiness.evaluate(session, state.settings, now)
+    return review.as_dict() | {
+        "earliest_evidence_date_if_real_paper_starts_now": readiness.lead_time(now)
+        .date()
+        .isoformat(),
+        "min_real_paper_days": readiness.MIN_REAL_PAPER_DAYS,
     }

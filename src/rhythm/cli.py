@@ -121,6 +121,23 @@ def _restore_verify(url: str) -> int:
     return 0 if ok else 1
 
 
+def _live_readiness(settings: Settings, *, markdown: bool) -> int:
+    """Exit 0 only when every blocking gate is met (then the owner decides; nothing changes)."""
+    from rhythm.readiness import gates  # noqa: PLC0415
+
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    try:
+        with session_scope(create_session_factory(engine)) as s:
+            review = gates.evaluate(s, settings, SystemClock().now())
+    finally:
+        engine.dispose()
+    if markdown:
+        sys.stdout.write(gates.to_markdown(review))
+    else:
+        _print(review.as_dict())
+    return 0 if review.verdict == "READY_FOR_OWNER_DECISION" else 1
+
+
 def _scheduler_health() -> int:
     from datetime import UTC, datetime  # noqa: PLC0415
 
@@ -178,6 +195,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--database-name", help="same server and credentials as RHYTHM_DATABASE_URL, other database"
     )
     sub.add_parser("scheduler-health", help="exit 0 if a leader scheduler beat recently")
+    p_lr = sub.add_parser(
+        "live-readiness", help="Phase 10 review: evaluate live-readiness gates (changes nothing)"
+    )
+    p_lr.add_argument("--markdown", action="store_true")
 
     p_user = sub.add_parser(
         "user-create", help="create a dashboard user (password + authenticator app)"
@@ -312,6 +333,8 @@ def _run(args: argparse.Namespace) -> int:
         return _restore_verify(url)
     if args.cmd == "scheduler-health":
         return _scheduler_health()
+    if args.cmd == "live-readiness":
+        return _live_readiness(settings, markdown=args.markdown)
 
     if args.cmd in ("user-create", "user-reset-mfa", "user-enable"):
         return _users(args, settings)

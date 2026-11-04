@@ -2,7 +2,7 @@
 
 AI-assisted research, portfolio decision-support and paper-trading platform for Indian cash equities (initial broker: Sharekhan). Claude is advisory only; deterministic strategy rules, portfolio accounting and an independent risk engine decide whether a candidate may become an order. **Live trading is disabled by default and is not implemented.** Nothing in this project promises returns.
 
-**Current phase: 9 — Reliability: scheduler, monitoring & alarms, backups/restore drill, load/soak/failure tests, runbooks (complete, awaiting review before Phase 10).** Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_9_REPORT.md`.
+**Current phase: 10 — Live-readiness review, complete: verdict NOT READY; live trading stays locked.** See `docs/LIVE_READINESS_REVIEW.md`. Exact test results: `docs/PHASE_1_REPORT.md` … `docs/PHASE_10_REPORT.md`.
 
 ## Quick start (local)
 
@@ -132,8 +132,8 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 | 7 ✅ | Claude research service: versioned prompts, evidence packets, schema validation, timeouts/retries/budget, safe fallback | Injection & malformed-output tests; no path to orders — MOCK provider only so far; see `docs/PHASE_7_REPORT.md` |
 | 8 ✅ | Full UX: 8 screens, approvals, notifications, audit views | Candidate/Approved/At-broker/Fill visually distinct — plus sign-in (D-05); see `docs/PHASE_8_REPORT.md` |
 | 9 ✅ | Reliability & security: recovery, rate limits, backups, monitoring, threat review, failure injection, extended paper evaluation | Runbook rehearsed — see `docs/PHASE_9_REPORT.md` (extended PAPER evaluation on real data waits for the Sharekhan connection) |
-| 10 | Live-readiness **review only** | Checklist complete; live stays off until separate explicit approval |
+| 10 ✅ | Live-readiness **review only** | Checklist complete; live stays off until separate explicit approval — verdict NOT READY (26 gates; `GET /v1/system/live-readiness`, `rhythm-cli live-readiness`) |
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PHASE_9_REPORT · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PHASE_9_REPORT · PHASE_10_REPORT · LIVE_READINESS_REVIEW · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

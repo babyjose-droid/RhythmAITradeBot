@@ -57,6 +57,8 @@ ignore = ["PLR0913", "PLR2004", "PLR0917", "PLR0911", "PLR0912", "PLR0915"]  # F
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "PLR2004", "S608"]
 "src/rhythm/db/migrations/**" = ["N999", "S608"]
+# A catalogue of human-readable gate texts; long string literals read better unwrapped.
+"src/rhythm/readiness/gates.py" = ["E501"]
 
 # ---------------------------------------------------------------- mypy
 [tool.mypy]
@@ -185,6 +187,12 @@ name = "Monitoring only reads state: no broker, order path, research, paper serv
 type = "forbidden"
 source_modules = ["rhythm.monitoring"]
 forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.research", "rhythm.api", "rhythm.paper"]
+
+[[tool.importlinter.contracts]]
+name = "The live-readiness review only reads: no broker, order path, paper service, research or API"
+type = "forbidden"
+source_modules = ["rhythm.readiness"]
+forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.paper", "rhythm.research", "rhythm.api"]
 
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small
