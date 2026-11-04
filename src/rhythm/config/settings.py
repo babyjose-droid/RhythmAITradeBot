@@ -137,6 +137,39 @@ class MetricsSettings(BaseModel):
     token: SecretStr | None = None
 
 
+class SharekhanSettings(BaseModel):
+    """Sharekhan Trading API, READ-ONLY (no order methods exist). Keys come from the owner's
+    .env / secret store and are never logged, stored in the database or shown in the UI."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    api_key: SecretStr | None = None
+    secret_key: SecretStr | None = None  # the "Secure Key"; used only for the token exchange
+    vendor_key: SecretStr | None = None  # partners only
+    # Where Sharekhan sends the browser after login. Must match what is registered for the key.
+    redirect_url: str = "http://127.0.0.1:8000/v1/broker/callback"
+    base_url: str = "https://api.sharekhan.com/skapi"
+    stream_url: str = "wss://stream.sharekhan.com/skstream/api/stream"
+    version_id: int | None = 1005  # documented: 1005 = URL-safe Base64 request tokens
+    timeout_seconds: float = Field(default=15.0, gt=0, le=60)
+    # Where to send the browser after a successful login (the dashboard's broker page).
+    dashboard_url: str = "http://127.0.0.1:3300/broker"
+
+    @field_validator("base_url")
+    @classmethod
+    def _https_api(cls, v: str) -> str:
+        if not v.startswith("https://"):
+            raise ValueError("sharekhan base_url must use https")
+        return v.rstrip("/")
+
+    @field_validator("stream_url")
+    @classmethod
+    def _wss(cls, v: str) -> str:
+        if not v.startswith("wss://"):
+            raise ValueError("sharekhan stream_url must use wss")
+        return v
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RHYTHM_",
@@ -156,11 +189,12 @@ class Settings(BaseSettings):
     features: FeatureFlags = FeatureFlags()
     # Phase 2: data sources. "none" means no source configured -> data reported MISSING.
     market_data_provider: Literal["none", "mock"] = "none"
-    broker_adapter: Literal["none", "mock"] = "none"
+    broker_adapter: Literal["none", "mock", "sharekhan"] = "none"  # read-only in every case
     event_provider: Literal["none", "mock"] = "none"  # corporate-event calendar (R18)
     fundamentals_provider: Literal["none", "mock"] = "none"  # long-term evidence (R21)
     research_provider: Literal["none", "mock", "anthropic"] = "none"  # Phase 7, advisory
     research: ResearchSettings = ResearchSettings()
+    sharekhan: SharekhanSettings = SharekhanSettings()
     auth: AuthSettings = AuthSettings()
     notifications: NotificationSettings = NotificationSettings()
     scheduler: SchedulerSettings = SchedulerSettings()
@@ -216,6 +250,22 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "authentication needs RHYTHM_AUTH__SECRET_KEY (at least 32 random characters, "
                     "from a secret store); or set RHYTHM_AUTH__ENABLED=false for a local-only demo"
+                )
+        if self.broker_adapter == "sharekhan":
+            sk = self.sharekhan
+            for name, val in (("API_KEY", sk.api_key), ("SECRET_KEY", sk.secret_key)):
+                v = val.get_secret_value() if val else ""
+                if not v or any(m in v.lower() for m in PLACEHOLDER_MARKERS):
+                    raise ValueError(f"broker_adapter=sharekhan needs RHYTHM_SHAREKHAN__{name}")
+            if len(sk.secret_key.get_secret_value().encode()) != 32:  # type: ignore[union-attr]
+                raise ValueError(
+                    "RHYTHM_SHAREKHAN__SECRET_KEY must be the 32-character Secure Key "
+                    "from Sharekhan"
+                )
+            if not self.auth.enabled:
+                raise ValueError(
+                    "a real broker account needs sign-in: remove RHYTHM_AUTH__ENABLED=false "
+                    "(do not use demo.env) and set RHYTHM_AUTH__SECRET_KEY"
                 )
         if self.research_provider != "none" and not self.features.research_service:
             raise ValueError("research_provider requires the research_service feature flag")

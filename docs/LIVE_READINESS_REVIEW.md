@@ -17,7 +17,7 @@ The same gates are evaluated from the running system by `GET /v1/system/live-rea
 | System | live path locked (SYS-01, informational); audit chain intact (SYS-03) | live broker order adapter not built (SYS-02) |
 | Security | sign-in with password + authenticator; owner exists (SEC-01) | hosted TLS + internet threat review (SEC-02) |
 | Operations | reconciliation clean (OPS-03) | scheduler must run in the target environment (OPS-01); restore drill within 30 days + off-host backups (OPS-02) |
-| Data | — | real market data (DATA-01); licensed fundamentals/events (DATA-02); Sharekhan read-only verification (DATA-03) |
+| Data | — | real market data (DATA-01); licensed fundamentals/events (DATA-02); Sharekhan read-only verification (DATA-03: met only when the last verification run had no errors and a market-hours stream check received prices) |
 | Evidence | — | ≥ 60 trading days of PAPER on real data (EVAL-01); cost model verified against a contract note (EVAL-02) |
 | Risk | — | owner-approved real-money limits (RISK-01) |
 | Regulatory | — | OAuth + 2FA (REG-01); **static IP** (REG-02); **exchange algo ID tagging** (REG-03); orders-per-second threshold / registration (REG-04); own/family use, white box (REG-05); exchange standards reviewed (REG-06) |

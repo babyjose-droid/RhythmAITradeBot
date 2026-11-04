@@ -47,6 +47,10 @@ services:
       # Phase 9: this stack runs the scheduler, so readiness requires its heartbeat.
       RHYTHM_SCHEDULER__EXPECTED: ${RHYTHM_SCHEDULER__EXPECTED:-true}
       RHYTHM_METRICS__TOKEN: ${RHYTHM_METRICS__TOKEN:-}
+      # Read-only Sharekhan link (only used when RHYTHM_BROKER_ADAPTER=sharekhan).
+      RHYTHM_SHAREKHAN__API_KEY: ${RHYTHM_SHAREKHAN__API_KEY:-}
+      RHYTHM_SHAREKHAN__SECRET_KEY: ${RHYTHM_SHAREKHAN__SECRET_KEY:-}
+      RHYTHM_SHAREKHAN__VENDOR_KEY: ${RHYTHM_SHAREKHAN__VENDOR_KEY:-}
     depends_on:
       db:
         condition: service_healthy

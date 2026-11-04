@@ -32,6 +32,8 @@ PUBLIC = frozenset(
         ("GET", "/v1/auth/status"),
         ("POST", "/v1/auth/login"),
         ("GET", "/metrics"),  # guarded by its own bearer token (see system.metrics)
+        # Cross-site redirect from Sharekhan (no cookie); guarded by the single-use login state.
+        ("GET", "/v1/broker/callback"),
     }
 )
 # Any signed-in user, any role (their own session and inbox).
@@ -62,9 +64,20 @@ SENSITIVE = frozenset(
         ("POST", "/v1/users/{username}/reset-mfa"),
         ("POST", "/v1/scheduler/jobs"),
         ("POST", "/v1/scheduler/jobs/{job_id}/enable"),
+        ("POST", "/v1/broker/login"),  # links a real brokerage account (read-only)
     }
 )
-OWNER_READ = frozenset({("GET", "/v1/users")})
+OWNER_READ = frozenset(
+    {
+        ("GET", "/v1/users"),
+        # Real brokerage account data: owner only.
+        ("GET", "/v1/broker/profile"),
+        ("GET", "/v1/broker/funds"),
+        ("GET", "/v1/broker/holdings"),
+        ("GET", "/v1/broker/positions"),
+        ("GET", "/v1/broker/orders"),
+    }
+)
 
 _user: ContextVar[CurrentUser | None] = ContextVar("rhythm_user", default=None)
 

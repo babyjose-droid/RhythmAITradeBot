@@ -1,4 +1,5 @@
 from rhythm.db.models.audit import AuditEvent
+from rhythm.db.models.broker import BrokerLoginStateRow, BrokerObservationRow, BrokerSessionRow
 from rhythm.db.models.events import CorporateEventRow, EventSyncRow
 from rhythm.db.models.fundamentals import FundamentalSnapshotRow
 from rhythm.db.models.health import SystemHealthEvent
@@ -34,6 +35,9 @@ __all__ = [
     "AuthSessionRow",
     "BacktestRun",
     "BacktestTrade",
+    "BrokerLoginStateRow",
+    "BrokerObservationRow",
+    "BrokerSessionRow",
     "ControlEventRow",
     "CorporateEventRow",
     "DataQualityEvent",

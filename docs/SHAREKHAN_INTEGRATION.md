@@ -143,3 +143,20 @@ Implementations: `MockBrokerAdapter` (deterministic fixtures, failure injection)
 3. WebSocket connect + one `ltp` subscription during market hours; record message shapes and timestamps.
 4. Resolve D1–D8 against observed responses and/or written confirmation from Sharekhan.
 No order endpoint will be called in any of these steps.
+
+## 13. Read-only implementation (2026-11-04)
+
+Built for step 12. **No order, modify or cancel method exists in the adapter, the client or the API**; tests fail if one is added.
+
+| Piece | File | Notes |
+|---|---|---|
+| Request-token transform | `broker/sharekhan/token.py` | AES-256-GCM, Secure Key as the key, 16-byte zero nonce, tag appended; `RequestId\|CustomerId` → swapped → re-encrypted; URL-safe Base64 for `version_id=1005`. Unverified until step 12.1. |
+| Read client | `broker/sharekhan/client.py` | `httpx`, TLS verified, no redirects followed. `login_url`, one POST (`/services/access/token`), and GETs to the six read paths in §5–6 only. Headers `access-token`, `api-key` (D4: `Authorization` is not sent; if Sharekhan needs it, the verification run shows 403). |
+| Parsers | `broker/sharekhan/readparsers.py` | Funds, holdings, positions, day orders, candles. Documented field name first, then a short list of alternatives; a missing field raises an error naming it. Rows outside NSE/BSE cash (e.g. `NF`) are skipped. |
+| Adapter | `broker/sharekhan/adapter.py` | `BrokerReadAdapter` plus `get_candles`; `probe_stream` connects to the WebSocket, subscribes to the `feed` module and `ltp` only (never `ack`), counts messages for ≤ 20 s and disconnects. |
+| Sessions | `brokerlink/service.py`, migration `0010_broker_link` | Login state: random, stored as SHA-256, single use, 10 min. Access token and customer ID sealed with Fernet (key derived from `RHYTHM_AUTH__SECRET_KEY`), 24 h. Masked account reference `****123` is the only identifier shown or audited. |
+| Verification | `POST /v1/broker/verify`, `/v1/broker/verify/stream` | Stores field names, JSON types, row counts, HTTP status and latency in `broker_observations`, never values. Readiness gate DATA-03 is MET only when the last run had no errors **and** a stream check received prices in market hours. |
+
+API (all `/v1/broker/...`): `GET status`; `POST login` (owner, re-auth ≤ 5 min) → `login_url`; `GET callback` (public; Sharekhan's redirect, guarded by the state); `GET profile|funds|holdings|positions|orders` (owner only); `GET historical/{exchange}/{symbol}?interval=daily`; `POST verify`, `POST verify/stream`, `POST logout`. Dashboard: **Sharekhan (read only)**.
+
+Redirect URL to register with Sharekhan: `http://127.0.0.1:8000/v1/broker/callback` (the API on your Mac). After the exchange the browser is sent to `http://127.0.0.1:3300/broker`.

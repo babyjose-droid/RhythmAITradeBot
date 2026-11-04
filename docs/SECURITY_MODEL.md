@@ -98,6 +98,14 @@ Broker API key + Secret Key; daily access token (JWT, 24 h); Anthropic API key; 
   The system prompt forbids following embedded instructions, and the gate limits any outcome to confirm-or-downgrade.
 - **Import contracts** enforce that research has no path to the broker, order, execution, paper or risk modules, and that the decision core never imports research.
 
+### Read-only Sharekhan link
+
+- The API Key and Secure Key live only in `.env` on the owner's machine (settings refuse placeholders, a Secure Key that is not 32 bytes, and `broker_adapter=sharekhan` with sign-in off). They are `SecretStr` and never logged or returned.
+- The owner signs in on Sharekhan's page; Rhythm never handles the Sharekhan password or 2FA.
+- The callback is public because the redirect is cross-site; it accepts only a state Rhythm issued to an owner, unused and under 10 minutes old.
+- The access token is sealed at rest and decrypted in memory per request; the WebSocket URL carries it as Sharekhan requires, so the stream probe never logs its URL.
+- The client can send exactly one POST (token exchange) and GETs to six read paths; tests fail on any other verb, path or order-like method name. An import-linter contract keeps `rhythm.brokerlink` away from the order path.
+
 ## 5. Threat model (STRIDE summary)
 
 | Threat | Example | Control |

@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+import httpx
 import structlog
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -18,6 +19,9 @@ from rhythm import __version__
 from rhythm.api.auth import access
 from rhythm.api.routes import (
     auth as auth_routes,
+)
+from rhythm.api.routes import (
+    broker as broker_routes,
 )
 from rhythm.api.routes import (
     instruments,
@@ -38,6 +42,9 @@ from rhythm.audit import ActorType, AuditLog
 from rhythm.auth.service import AuthService
 from rhythm.broker.base import BrokerReadAdapter
 from rhythm.broker.mock import MockBrokerAdapter
+from rhythm.broker.sharekhan.adapter import ActiveSession, SharekhanBroker
+from rhythm.broker.sharekhan.client import SharekhanReadClient
+from rhythm.brokerlink import service as broker_link
 from rhythm.config import Settings, get_settings
 from rhythm.core.calendar import SessionCalendar
 from rhythm.core.clock import Clock, SystemClock
@@ -132,6 +139,39 @@ def build_broker(settings: Settings, clock: Clock) -> BrokerReadAdapter | None:
     return None
 
 
+def build_sharekhan(
+    state: AppState, transport: httpx.BaseTransport | None = None
+) -> broker_link.SharekhanLink:
+    """Read-only Sharekhan link. Settings already refused missing keys or disabled sign-in."""
+    sk = state.settings.sharekhan
+    auth_key = state.settings.auth.secret_key
+    if sk.api_key is None or sk.secret_key is None or auth_key is None:  # Settings refuses this
+        raise RuntimeError("Sharekhan keys and RHYTHM_AUTH__SECRET_KEY are required")
+    sealer = broker_link.box(auth_key.get_secret_value())
+    client = SharekhanReadClient(
+        api_key=sk.api_key.get_secret_value(),
+        secret_key=sk.secret_key.get_secret_value(),
+        base_url=sk.base_url,
+        vendor_key=sk.vendor_key.get_secret_value() if sk.vendor_key else None,
+        version_id=sk.version_id,
+        timeout_seconds=sk.timeout_seconds,
+        transport=transport,
+    )
+
+    def session_provider() -> ActiveSession | None:
+        with session_scope(state.session_factory) as s:
+            return broker_link.active_session(s, sealer, state.clock.now())
+
+    return broker_link.SharekhanLink(
+        client=client,
+        sealer=sealer,
+        broker=SharekhanBroker(client, session_provider, state.clock),
+        api_key=sk.api_key.get_secret_value(),
+        stream_url=sk.stream_url,
+        dashboard_url=sk.dashboard_url,
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -179,6 +219,9 @@ def create_app(
         else ResearchService(rprov, settings.research, clock, audit),
         auth=AuthService(settings.auth, audit) if settings.auth.enabled else None,
     )
+    if settings.broker_adapter == "sharekhan" and broker is None:
+        state.sharekhan = build_sharekhan(state)
+        state.broker = state.sharekhan.broker
     notifications.configure(settings.notifications)
     wh = settings.notifications.webhook_url
     dispatcher = (
@@ -277,6 +320,7 @@ def create_app(
         research.router,
         ops.router,
         scheduler_routes.router,
+        broker_routes.router,
     ):
         app.include_router(r, dependencies=guarded)
     return app

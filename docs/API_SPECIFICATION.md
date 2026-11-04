@@ -30,7 +30,13 @@
 | GET | `/v1/scheduler/status` · GET `/v1/scheduler/jobs` · GET `/v1/scheduler/jobs/{id}/runs` | 9 ✅ | heartbeats/leader, component health, jobs, run history |
 | POST | `/v1/scheduler/jobs` · POST `/v1/scheduler/jobs/{id}/enable` | 9 ✅ | owner + re-auth; jobs are created disabled; kinds paper_cycle / events_sync / fundamentals_sync / health_check / audit_verify; schedules intraday_5m / after_close / daily_at / every_minutes |
 | POST | `/v1/scheduler/jobs/{id}/disable` · POST `/v1/scheduler/jobs/{id}/run` | 9 ✅ | owner; run = manual trigger through the same path as a scheduled run (Idempotency-Key) |
-| GET | `/v1/system/live-readiness` | 10 ✅ | review only: 26 gates (MET / NOT_MET / OWNER), verdict, evidence and sources; changes nothing |
+| GET | `/v1/system/live-readiness` | 10 ✅ | review only: 26 gates (DATA-03 = Sharekhan read-only verification evidence) (MET / NOT_MET / OWNER), verdict, evidence and sources; changes nothing |
+| GET | `/v1/broker/status` | SK ✅ | read-only Sharekhan link: configured, connected, masked account, expiry, last verification (shapes only), market open |
+| POST | `/v1/broker/login` | SK ✅ | owner + re-auth; returns Sharekhan `login_url` (state single use, 10 min) |
+| GET | `/v1/broker/callback?request_token=&state=` | SK ✅ | public (Sharekhan's cross-site redirect, guarded by the state); token exchange, then 302 to the dashboard with `connected=1` or `error=` |
+| GET | `/v1/broker/profile` · `funds?exchange=` · `holdings` · `positions` · `orders` | SK ✅ | owner only; read from Sharekhan, origin SHAREKHAN; 401 when not signed in to Sharekhan |
+| GET | `/v1/broker/historical/{exchange}/{symbol}?interval=daily&limit=` | SK ✅ | Sharekhan candles (unadjusted); needs the Sharekhan scrip master synced |
+| POST | `/v1/broker/verify` · `/v1/broker/verify/stream` · `/v1/broker/logout` | SK ✅ | owner; verification records field names/types/counts/latency only; stream = LTP for ≤ 5 instruments, ≤ 20 s |
 | GET | `/metrics` | 9 ✅ | Prometheus text; `Authorization: Bearer $RHYTHM_METRICS__TOKEN` (local/test only without a token) |
 | GET | `/v1/automation` | 8 ✅ | guards, strategies with pause state and last run, approvals policy, research gate, webhook, scheduler status |
 | POST | `/v1/events/sync` · POST `/v1/events` · GET `/v1/events?watchlist_id=` | 5 ✅ | event calendar. Sync = coverage proof for R18. Manual entries need `source_ref`; `known_at` ≤ now |

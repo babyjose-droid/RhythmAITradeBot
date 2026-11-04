@@ -100,6 +100,20 @@ Roles: `owner` (everything; risk-limit changes, kill-switch release and user adm
 
 Phase 9 — the stack now also runs `scheduler` (jobs you create and enable under **Automation → Scheduled jobs**; one leader, one run per slot, auto-disable after 3 failures) and `backup` (daily verified `pg_dump` into `./backups`, kept 14 days). Readiness fails closed if the scheduler heartbeat is stale. Restore drill, metrics (`/metrics` with `RHYTHM_METRICS__TOKEN`) and incident playbooks: `docs/OPERATIONS_RUNBOOK.md`. Load test: `python3 scripts/loadtest.py`; perf/soak: `pytest -m perf`, `pytest -m soak`.
 
+**Connect Sharekhan (read only).** Nothing in the code can place, change or cancel an order.
+
+1. Create the API key at sharekhan.com/trading-api (GET STARTED). Static IP: your Mac's public IPv4 (`curl -4 https://api.ipify.org`, VPN off). Redirect URL: `http://127.0.0.1:8000/v1/broker/callback`.
+2. On the Mac only, add to `.env` (never paste the keys into a chat, an issue or a web page):
+   ```
+   RHYTHM_BROKER_ADAPTER=sharekhan
+   RHYTHM_SHAREKHAN__API_KEY=<API Key>
+   RHYTHM_SHAREKHAN__SECRET_KEY=<32-character Secure Key>
+   RHYTHM_AUTH__SECRET_KEY=<from the Phase 8 step above>
+   ```
+   Do not add `--env-file demo.env` (it turns sign-in off, which this refuses).
+3. `docker compose --env-file .env up -d --build`, sign in at http://127.0.0.1:3300, open **Sharekhan (read only)** → **Connect Sharekhan**, and sign in on Sharekhan's page.
+4. **Run read-only verification**, then **Instruments → sync** (Sharekhan scrip master), then **Test price stream** between 09:15 and 15:30 IST. Results: field names, counts and timings only.
+
 **Demo in one go (local Docker, MOCK data, PAPER mode):**
 
 ```bash
@@ -132,8 +146,8 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 | 7 ✅ | Claude research service: versioned prompts, evidence packets, schema validation, timeouts/retries/budget, safe fallback | Injection & malformed-output tests; no path to orders — MOCK provider only so far; see `docs/PHASE_7_REPORT.md` |
 | 8 ✅ | Full UX: 8 screens, approvals, notifications, audit views | Candidate/Approved/At-broker/Fill visually distinct — plus sign-in (D-05); see `docs/PHASE_8_REPORT.md` |
 | 9 ✅ | Reliability & security: recovery, rate limits, backups, monitoring, threat review, failure injection, extended paper evaluation | Runbook rehearsed — see `docs/PHASE_9_REPORT.md` (extended PAPER evaluation on real data waits for the Sharekhan connection) |
-| 10 ✅ | Live-readiness **review only** | Checklist complete; live stays off until separate explicit approval — verdict NOT READY (26 gates; `GET /v1/system/live-readiness`, `rhythm-cli live-readiness`) |
+| 10 ✅ | Live-readiness **review only** | Checklist complete; live stays off until separate explicit approval — verdict NOT READY (26 gates; DATA-03 now checks the Sharekhan read-only verification; `GET /v1/system/live-readiness`, `rhythm-cli live-readiness`) |
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PHASE_9_REPORT · PHASE_10_REPORT · LIVE_READINESS_REVIEW · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PHASE_9_REPORT · PHASE_10_REPORT · SHAREKHAN_READONLY_REPORT · LIVE_READINESS_REVIEW · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

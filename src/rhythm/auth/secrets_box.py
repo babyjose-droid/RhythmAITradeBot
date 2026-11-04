@@ -1,4 +1,7 @@
-"""Encryption at rest for TOTP secrets (Fernet: AES-128-CBC + HMAC-SHA256)."""
+"""Encryption at rest for TOTP secrets and broker sessions (Fernet: AES-128-CBC + HMAC-SHA256).
+
+Each use derives its own key from RHYTHM_AUTH__SECRET_KEY via a distinct ``context``.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +12,10 @@ from cryptography.fernet import Fernet, InvalidToken
 
 
 class SecretBox:
-    def __init__(self, key: str) -> None:
+    def __init__(self, key: str, context: str = "rhythm-totp-v1") -> None:
         if len(key) < 32:
             raise ValueError("secret key must have at least 32 characters")
-        derived = hashlib.sha256(b"rhythm-totp-v1:" + key.encode()).digest()
+        derived = hashlib.sha256(context.encode() + b":" + key.encode()).digest()
         self._f = Fernet(base64.urlsafe_b64encode(derived))
 
     def seal(self, plaintext: str) -> str:

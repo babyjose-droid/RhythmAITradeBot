@@ -19,7 +19,8 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "structlog>=24.4",
   "httpx>=0.27,<1",  # research provider (Anthropic Messages API)
-  "cryptography>=44",  # encrypts TOTP secrets at rest (Fernet)
+  "cryptography>=44",  # encrypts TOTP secrets at rest (Fernet); Sharekhan token exchange
+  "websockets>=13",  # Sharekhan price-stream check (read-only)
 ]
 
 [project.optional-dependencies]
@@ -193,6 +194,12 @@ name = "The live-readiness review only reads: no broker, order path, paper servi
 type = "forbidden"
 source_modules = ["rhythm.readiness"]
 forbidden_modules = ["rhythm.broker", "rhythm.orders", "rhythm.paper", "rhythm.research", "rhythm.api"]
+
+[[tool.importlinter.contracts]]
+name = "The broker link is read-only: no order path, paper service, risk, research or API"
+type = "forbidden"
+source_modules = ["rhythm.brokerlink"]
+forbidden_modules = ["rhythm.orders", "rhythm.execution", "rhythm.paper", "rhythm.risk", "rhythm.controls", "rhythm.research", "rhythm.api"]
 
 [[tool.mypy.overrides]]
 # Tests mutate objects between assertions (mypy narrows enum attributes) and use small

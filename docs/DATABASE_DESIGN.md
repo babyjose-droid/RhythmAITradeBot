@@ -54,6 +54,12 @@ The rest is the Phase 0 proposal. PostgreSQL 16, Alembic migrations from Phase 1
 - Rows with `source='MOCK'` rejected by a check constraint when `app.environment = 'production'`.
 - Timestamps: UTC `timestamptz`; original exchange-local strings stored in `source_ts_raw` where relevant.
 
+## 2a. Read-only Sharekhan link (migration 0010_broker_link)
+
+- `broker_sessions`: access token and customer ID **sealed** (Fernet, key derived from `RHYTHM_AUTH__SECRET_KEY` with context `rhythm-broker-session-v1`); masked `account_ref`; `expires_at` = sign-in + 24 h; `revoked_at` on disconnect or a new sign-in.
+- `broker_login_states`: SHA-256 of the login `state`, owner, 10-minute expiry, `used_at` (single use).
+- `broker_observations`: per verification check, endpoint template, HTTP status, latency, outcome, and the response **shape** (field names, JSON types, row count). No values.
+
 ## 3. Retention
 
 Market data: indefinite (partitioned). Raw broker payloads: 7 years (to confirm against record-keeping requirements). Tokens: never persisted unencrypted; purged at expiry.

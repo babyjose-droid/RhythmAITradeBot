@@ -23,7 +23,14 @@ from sqlalchemy.orm import Session
 from rhythm.audit import AuditLog
 from rhythm.config.settings import LIVE_TRADING_IMPLEMENTED, Settings
 from rhythm.core.clock import EXCHANGE_TZ
-from rhythm.db.models import AuditEvent, PaperAccount, ReconciliationRow, RiskPolicyRow, UserRow
+from rhythm.db.models import (
+    AuditEvent,
+    BrokerObservationRow,
+    PaperAccount,
+    ReconciliationRow,
+    RiskPolicyRow,
+    UserRow,
+)
 from rhythm.execution.costs import CostModel
 from rhythm.monitoring.health import leader_heartbeat_age
 
@@ -79,6 +86,39 @@ class Review:
             "blockers": len(self.blockers),
             "gates": [g.as_dict() for g in self.gates],
         }
+
+
+def _sharekhan_verified(session: Session) -> tuple[bool, bool, str]:
+    """Last verification run had no errors; a stream check received prices in market hours."""
+    last = session.execute(
+        select(BrokerObservationRow.run_id).order_by(BrokerObservationRow.id.desc()).limit(1)
+    ).scalar_one_or_none()
+    outcomes: list[str] = []
+    if last is not None:
+        outcomes = list(
+            session.execute(
+                select(BrokerObservationRow.outcome).where(BrokerObservationRow.run_id == last)
+            ).scalars()
+        )
+    reads_ok = bool(outcomes) and "ERROR" not in outcomes
+    streams = session.execute(
+        select(AuditEvent.payload)
+        .where(AuditEvent.event_type == "broker.verification.stream")
+        .order_by(AuditEvent.id.desc())
+        .limit(50)
+    ).scalars()
+    streamed = any(
+        p.get("connected") and (p.get("messages") or 0) > 0 and p.get("market_open")
+        for p in streams
+    )
+    if last is None:
+        reads = "read checks not run yet (needs your keys and a Sharekhan sign-in)"
+    elif reads_ok:
+        reads = f"read checks passed (run {last}, {len(outcomes)} checks)"
+    else:
+        reads = f"read checks had errors (run {last})"
+    stream = "stream check passed" if streamed else "stream check not passed in market hours"
+    return reads_ok, streamed, f"{reads}; {stream}"
 
 
 def _real_paper_days(session: Session) -> int:
@@ -214,13 +254,14 @@ def evaluate(session: Session, settings: Settings, now: datetime) -> Review:
             source="B-06, D-03",
         )
     )
+    reads_ok, streamed, data03 = _sharekhan_verified(session)
     g(
         Gate(
             "DATA-03",
             "Data",
             "Sharekhan read-only verification done (login, funds, holdings, positions, history, streaming)",
-            MET if settings.broker_adapter not in ("none", "mock") else NOT_MET,
-            f"broker_adapter={settings.broker_adapter}; needs your API key and redirect-URL registration (B-04)",
+            MET if reads_ok and streamed else NOT_MET,
+            f"broker_adapter={settings.broker_adapter}; {data03}",
             source="SHAREKHAN_INTEGRATION §12",
         )
     )

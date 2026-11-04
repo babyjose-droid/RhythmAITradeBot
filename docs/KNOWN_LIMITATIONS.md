@@ -20,6 +20,10 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Sharekhan read-only link:** written against the documented protocol and tested only against a simulated Sharekhan API. The token transform, field names and stream messages are unverified until your first supervised sign-in. Expect the first verification run to show which parsers need adjusting.
+- **Sharekhan read-only link:** sessions last at most 24 hours with no refresh, so an owner signs in on Sharekhan once a day. "Disconnect" forgets the token locally; Sharekhan's own token still expires on its own schedule.
+- **Sharekhan read-only link:** available funds are not computed (B-05); only the reported cash balance and raw fields are shown. Holdings default to NSE when Sharekhan reports no exchange.
+- **Sharekhan read-only link:** the redirect goes to `127.0.0.1`, so sign-in works only from the Mac running the stack (hosted use needs a public HTTPS callback and a static IP, REG-02).
 - **Phase 10:** live trading is not implemented and the review verdict is NOT READY (see LIVE_READINESS_REVIEW.md). The orders-per-second threshold, the NSE/BSE implementation standards and Sharekhan's static-IP and algo-ID procedure are unverified; web search was unavailable and NSE refused automated fetches.
 - **Phase 9:** the scheduler runs only the jobs an owner has created and enabled; there are no default jobs. Missed slots (scheduler down for more than 10 minutes) are not run late by design. Run a cycle manually if needed.
 - **Phase 9:** backups are written next to the database (`./backups` on the same machine), so copy them off-host. The restore drill is a script and runbook step, with no dashboard button.
