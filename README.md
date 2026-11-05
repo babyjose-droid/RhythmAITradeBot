@@ -100,6 +100,8 @@ Roles: `owner` (everything; risk-limit changes, kill-switch release and user adm
 
 Phase 9 — the stack now also runs `scheduler` (jobs you create and enable under **Automation → Scheduled jobs**; one leader, one run per slot, auto-disable after 3 failures) and `backup` (daily verified `pg_dump` into `./backups`, kept 14 days). Readiness fails closed if the scheduler heartbeat is stale. Restore drill, metrics (`/metrics` with `RHYTHM_METRICS__TOKEN`) and incident playbooks: `docs/OPERATIONS_RUNBOOK.md`. Load test: `python3 scripts/loadtest.py`; perf/soak: `pytest -m perf`, `pytest -m soak`.
 
+**Private AWS test server** (fixed IP for Sharekhan, dashboard over an SSH tunnel): `docs/AWS_SETUP.md`.
+
 **Connect Sharekhan (read only).** Nothing in the code can place, change or cancel an order.
 
 1. Create the API key at sharekhan.com/trading-api (GET STARTED). Static IP: your Mac's public IPv4 (`curl -4 https://api.ipify.org`, VPN off). Redirect URL: `http://127.0.0.1:8000/v1/broker/callback`.
@@ -150,4 +152,4 @@ Safety defaults: mode `RESEARCH_ONLY`; `LIVE` makes the app refuse to start; the
 
 ## Documentation
 
-`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PHASE_9_REPORT · PHASE_10_REPORT · SHAREKHAN_READONLY_REPORT · LIVE_READINESS_REVIEW · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS
+`docs/`: PHASE_1_REPORT · PHASE_2_REPORT · PHASE_3_REPORT · PHASE_4_REPORT · PHASE_5_REPORT · PHASE_6_REPORT · PHASE_7_REPORT · PHASE_8_REPORT · PHASE_9_REPORT · PHASE_10_REPORT · SHAREKHAN_READONLY_REPORT · AWS_SETUP · LIVE_READINESS_REVIEW · PRODUCT_REQUIREMENTS · SYSTEM_ARCHITECTURE · DATABASE_DESIGN · API_SPECIFICATION · SHAREKHAN_INTEGRATION · STRATEGY_SPECIFICATION · MULTI_HORIZON_PORTFOLIO · RISK_MANAGEMENT · BACKTESTING_METHODOLOGY · PAPER_TRADING · SECURITY_MODEL · COMPLIANCE_CHECKLIST · TEST_PLAN · DEPLOYMENT_GUIDE · OPERATIONS_RUNBOOK · KNOWN_LIMITATIONS

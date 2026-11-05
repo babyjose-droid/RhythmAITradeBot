@@ -56,6 +56,10 @@ docker pull ghcr.io/babyjose-droid/rhythmaitradebot:main
 ```
 New packages on GHCR are private by default; change visibility under the package's *Package settings* if needed. For AWS (Phase 9) the same image will be mirrored to ECR.
 
+## Private AWS test server (now)
+
+One EC2 instance in Mumbai with an Elastic IP, SSH-tunnel access only, the same Docker stack: step-by-step in `docs/AWS_SETUP.md` (scripts in `scripts/aws/`). Used for the read-only Sharekhan test, because Sharekhan needs a fixed IP.
+
 ## Hosted (later)
 
 AWS-compatible: container service, managed Postgres (encryption at rest, PITR), secrets manager, private subnets, TLS termination, central logs/metrics/alerts, NTP-synchronised hosts. **A fixed egress IP may be needed** if static-IP whitelisting applies to API orders (Blocker B-01) — decide before choosing hosting.

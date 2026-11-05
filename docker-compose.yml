@@ -19,6 +19,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped  # comes back after a server reboot
 
   migrate:
     build: .
