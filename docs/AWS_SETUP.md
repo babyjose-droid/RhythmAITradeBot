@@ -4,7 +4,7 @@
 
 **Design:** nothing is opened to the internet except SSH, and only from your own IP. The dashboard and API listen on the server's `127.0.0.1`. You reach them from your Mac through an encrypted SSH tunnel, so your browser still uses `http://127.0.0.1:3300` and the Sharekhan redirect URL stays `http://127.0.0.1:8000/v1/broker/callback`. Calls to Sharekhan's API leave from the Elastic IP.
 
-**Cost (approximate, check AWS pricing):** t3.small around US$16/month, 20 GB disk around US$2, public IPv4 address around US$4. Total **about US$20/month** while it exists. Stopping the instance removes the compute part; the disk and the IP keep billing.
+**Cost (approximate, check AWS pricing):** t3.medium around US$33/month, 30 GB disk around US$3, public IPv4 address around US$4, daily snapshots around US$1–2. Total **about US$40/month** while it exists. (A t3.small, 2 GiB, about US$25/month in total, is enough for the read-only Sharekhan test only.) Stopping the instance removes the compute part; the disk and the IP keep billing.
 
 > Never paste the AWS sign-in, the `.pem` key file, or the Sharekhan keys into a chat, email or ticket.
 
@@ -25,9 +25,9 @@
 ## Step 1 — Budget alert (2 minutes, recommended)
 
 1. Search bar: **Budgets** → **Create budget** → **Use a template** → **Monthly cost budget**.
-2. Budget amount: **25** (USD). Email: yours. **Create budget**.
+2. Budget amount: **50** (USD). Email: yours. **Create budget**.
 
-You get an email if the month's spending heads past US$25.
+You get an email if the month's spending heads past US$50.
 
 ## Step 2 — Launch the server
 
@@ -37,10 +37,10 @@ EC2 → **Instances** → **Launch instances**:
 |---|---|
 | Name | `rhythm-trader` |
 | Application and OS image | **Ubuntu** → **Ubuntu Server 24.04 LTS**, architecture **64-bit (x86)** |
-| Instance type | **t3.small** (2 vCPU, 2 GiB) |
+| Instance type | **t3.medium** (2 vCPU, 4 GiB): headroom for real-time PAPER testing in market hours. Credit specification: leave **Unlimited** so the server is never slowed at 09:15; the budget alert covers the small extra cost if it ever bursts for long. |
 | Key pair | **Create new key pair** → name `rhythm-key`, type **RSA**, format **.pem** → **Create key pair**. The file `rhythm-key.pem` downloads; keep it safe, AWS cannot give it to you again. |
 | Network settings | Click **Edit**. Auto-assign public IP: **Enable**. Firewall: **Create security group**, name `rhythm-ssh-only`. Keep only the **ssh** rule, with Source type **My IP**. Do **not** add HTTP or HTTPS rules. |
-| Configure storage | **20** GiB, **gp3**. Click **Advanced** → *Encrypted*: **Encrypted** (default KMS key). |
+| Configure storage | **30** GiB, **gp3** (market data and backups grow). Click **Advanced** → *Encrypted*: **Encrypted** (default KMS key). |
 | Advanced details | Leave as is. (*Metadata version* should show **V2 only**.) |
 
 Click **Launch instance**, then **View all instances**. Wait until *Instance state* is **Running** and *Status check* shows **2/2 checks passed**.
@@ -50,6 +50,19 @@ Click **Launch instance**, then **View all instances**. Wait until *Instance sta
 1. EC2 → **Elastic IPs** → **Allocate Elastic IP address** → **Allocate**.
 2. Select the new address → **Actions** → **Associate Elastic IP address** → Resource type **Instance** → choose `rhythm-trader` → **Associate**.
 3. **Write down this IP.** It is the static IP for the Sharekhan form, and the address you SSH to. Below it is written `ELASTIC_IP`.
+
+## Step 3b — Daily disk snapshots (5 minutes, recommended)
+
+Off-server backup of everything (database included):
+
+1. EC2 → **Lifecycle Manager** → **Create lifecycle policy** → **EBS snapshot policy**.
+2. Target resource: **Instance**, tag `Name` = `rhythm-trader`.
+3. Schedule: daily, at **18:30 UTC** (00:00 IST, after the market closes), retain **7**.
+4. IAM role: **Default role**. **Create policy**.
+
+## Step 3c — Auto-recovery alarm (2 minutes, recommended)
+
+EC2 → select the instance → **Actions** → **Monitor and troubleshoot** → **Manage CloudWatch alarms** → Create an alarm: *Alarm when* **Status check failed: system**, action **Recover**. Add your email for notification.
 
 ## Step 4 — Connect from your Mac
 
