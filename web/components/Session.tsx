@@ -8,7 +8,7 @@ import { api, setReauthHandler, type Me, type NotificationSummary } from "@/lib/
 const SessionCtx = createContext<Me | null>(null);
 export const useMe = () => useContext(SessionCtx);
 
-function ReauthDialog({ onDone }: { onDone: (ok: boolean) => void }) {
+function ReauthDialog({ onDone, mfa }: { onDone: (ok: boolean) => void; mfa: boolean }) {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -30,15 +30,17 @@ function ReauthDialog({ onDone }: { onDone: (ok: boolean) => void }) {
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="reauth-title">
       <form className="modal" onSubmit={submit}>
         <h2 id="reauth-title">Confirm it is you</h2>
-        <p className="muted">This action changes risk controls or users. Enter your password and a fresh authenticator code.</p>
+        <p className="muted">This action changes risk controls or users. Enter your password{mfa ? " and a fresh authenticator code" : ""}.</p>
         <label>
           Password
           <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
-        <label>
-          6-digit code
-          <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} required />
-        </label>
+        {mfa && (
+          <label>
+            6-digit code
+            <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} required />
+          </label>
+        )}
         {err && <div className="error">{err}</div>}
         <div className="row">
           <button type="button" onClick={() => onDone(false)}>
@@ -116,6 +118,7 @@ export function SessionBar({ children }: { children?: ReactNode }) {
       {children}
       {asking && (
         <ReauthDialog
+          mfa={me?.mfa_required !== false}
           onDone={(ok) => {
             setAsking(false);
             resolver.current?.(ok);

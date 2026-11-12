@@ -199,6 +199,8 @@ class AuthService:
     # ------------------------------------------------------------------ login
     def _check(self, u: UserRow, password: str, code: str, at: datetime) -> bool:
         ok_pw = passwords.verify_password(password, u.password_hash)
+        if not self.settings.mfa_required:  # password-only mode (local only, see Settings)
+            return ok_pw
         step = totp.verify(
             self.box.open(u.totp_secret_sealed), code, at, last_step=u.totp_last_step
         )

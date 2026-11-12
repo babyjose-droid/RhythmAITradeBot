@@ -136,3 +136,15 @@ def test_mock_sources_refused_outside_local(field: str) -> None:
 def test_data_sources_default_to_none() -> None:
     s = make_settings()
     assert (s.market_data_provider, s.broker_adapter) == ("none", "none")
+
+
+def test_password_only_sign_in_is_local_only() -> None:
+    key = "k" * 40
+    s = make_settings(auth={"enabled": True, "secret_key": key, "mfa_required": False})
+    assert s.auth.mfa_required is False
+    for env in ("staging", "production"):
+        with pytest.raises(ValueError, match="second sign-in factor"):
+            make_settings(
+                environment=env,
+                auth={"enabled": True, "secret_key": key, "mfa_required": False},
+            )

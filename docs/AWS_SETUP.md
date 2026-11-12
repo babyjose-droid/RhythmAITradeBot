@@ -100,6 +100,8 @@ sudo docker compose exec api rhythm-cli user-create --username owner --role owne
 
 Choose a password. Add the authenticator secret it prints (shown once) to Google Authenticator, Authy or 1Password.
 
+**Password only (temporary):** to sign in without the authenticator code, on the server run `cd ~/rhythm-ai-trader && echo 'RHYTHM_AUTH__MFA_REQUIRED=false' >> .env && sudo docker compose --env-file .env up -d api`. Remove that line and run the same `up -d api` to turn the code back on.
+
 ## Step 7 — Open the dashboard through the tunnel (on your Mac)
 
 1. If the local Docker stack is running on your Mac, stop it first, because ports 3300 and 8000 must be free:

@@ -49,7 +49,7 @@ export default function Login() {
           <div className="error">
             <strong>No users yet.</strong> Create the owner account on the machine running the API:
             <pre className="mono">docker compose exec api rhythm-cli user-create --username owner --role owner</pre>
-            It prints an authenticator secret once — add it to Google Authenticator, Authy or 1Password.
+            Unless the authenticator is turned off, it prints a secret once — add it to Google Authenticator, Authy or 1Password.
           </div>
         )}
         <form className="form" onSubmit={submit}>
@@ -61,18 +61,20 @@ export default function Login() {
             Password
             <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </label>
-          <label>
-            Authenticator code
-            <input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-            />
-          </label>
+          {status?.mfa_required !== false && (
+            <label>
+              Authenticator code
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+              />
+            </label>
+          )}
           {err && <div className="error" role="alert">{err}</div>}
           <div className="row">
             <button className="primary" disabled={busy}>

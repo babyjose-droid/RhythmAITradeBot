@@ -43,6 +43,8 @@ services:
       RHYTHM_RESEARCH__DAILY_TOKEN_BUDGET: ${RHYTHM_RESEARCH__DAILY_TOKEN_BUDGET:-200000}
       RHYTHM_AUTH__ENABLED: ${RHYTHM_AUTH__ENABLED:-true}
       RHYTHM_AUTH__SECRET_KEY: ${RHYTHM_AUTH__SECRET_KEY:-}
+      # false = password only (local environment only; temporary).
+      RHYTHM_AUTH__MFA_REQUIRED: ${RHYTHM_AUTH__MFA_REQUIRED:-true}
       RHYTHM_NOTIFICATIONS__WEBHOOK_URL: ${RHYTHM_NOTIFICATIONS__WEBHOOK_URL:-}
       RHYTHM_NOTIFICATIONS__WEBHOOK_MIN_SEVERITY: ${RHYTHM_NOTIFICATIONS__WEBHOOK_MIN_SEVERITY:-warning}
       # Phase 9: this stack runs the scheduler, so readiness requires its heartbeat.

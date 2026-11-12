@@ -45,13 +45,18 @@ def status(state: StateDep, session: SessionDep) -> dict[str, Any]:
     if state.auth is None:
         return {"enabled": False, "has_users": False, "note": "auth disabled (local/test only)"}
     has = state.auth.has_users(session)
-    return {"enabled": True, "has_users": has, "setup_hint": None if has else SETUP_HINT}
+    return {
+        "enabled": True,
+        "mfa_required": state.auth.settings.mfa_required,
+        "has_users": has,
+        "setup_hint": None if has else SETUP_HINT,
+    }
 
 
 class LoginIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=256)
-    code: str = Field(min_length=6, max_length=8)
+    code: str = Field(default="", max_length=8)  # empty when mfa_required=false
 
 
 @router.post("/v1/auth/login")
@@ -105,13 +110,14 @@ def me(state: StateDep) -> dict[str, Any]:
         "username": u.username,
         "role": u.role,
         "auth_enabled": state.auth is not None,
+        "mfa_required": state.auth.settings.mfa_required if state.auth else False,
         "recently_reauthenticated": recent,
     }
 
 
 class ReauthIn(BaseModel):
     password: str = Field(min_length=1, max_length=256)
-    code: str = Field(min_length=6, max_length=8)
+    code: str = Field(default="", max_length=8)  # empty when mfa_required=false
 
 
 @router.post("/v1/auth/reauth")
@@ -129,7 +135,7 @@ def reauth(body: ReauthIn, state: StateDep, session: SessionDep) -> Any:
 class PasswordIn(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=1, max_length=256)
-    code: str = Field(min_length=6, max_length=8)
+    code: str = Field(default="", max_length=8)  # empty when mfa_required=false
 
 
 @router.post("/v1/auth/password")

@@ -177,8 +177,11 @@ def evaluate(session: Session, settings: Settings, now: datetime) -> Review:
             "SEC-01",
             "Security",
             "Sign-in with password + authenticator; at least one active owner",
-            MET if settings.auth.enabled and owners >= 1 else NOT_MET,
-            f"auth enabled={settings.auth.enabled}; active owners={owners}",
+            MET
+            if settings.auth.enabled and settings.auth.mfa_required and owners >= 1
+            else NOT_MET,
+            f"auth enabled={settings.auth.enabled}; authenticator required="
+            f"{settings.auth.mfa_required}; active owners={owners}",
         )
     )
     g(

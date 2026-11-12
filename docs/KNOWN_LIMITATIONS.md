@@ -20,6 +20,7 @@
 
 ## 2. Known limitations (by design or data)
 
+- **Sign-in:** `RHYTHM_AUTH__MFA_REQUIRED=false` turns off the authenticator code (password only). It is refused outside the local environment and keeps readiness gate SEC-01 open. Temporary on the private AWS test server until an OTP (SMS/email) second factor is built.
 - **Sharekhan read-only link:** written against the documented protocol and tested only against a simulated Sharekhan API. The token transform, field names and stream messages are unverified until your first supervised sign-in. Expect the first verification run to show which parsers need adjusting.
 - **Sharekhan read-only link:** sessions last at most 24 hours with no refresh, so an owner signs in on Sharekhan once a day. "Disconnect" forgets the token locally; Sharekhan's own token still expires on its own schedule.
 - **Sharekhan read-only link:** available funds are not computed (B-05); only the reported cash balance and raw fields are shown. Holdings default to NSE when Sharekhan reports no exchange.

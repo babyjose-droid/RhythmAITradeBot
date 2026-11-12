@@ -80,6 +80,9 @@ class AuthSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     enabled: bool = True
+    # False = password only, no authenticator code (local environment only; readiness SEC-01
+    # stays NOT_MET). Temporary until another second factor is chosen.
+    mfa_required: bool = True
     # Encrypts TOTP secrets at rest and must stay stable. From a secret store, >= 32 chars.
     secret_key: SecretStr | None = None
     session_idle_minutes: int = Field(default=30, ge=5, le=480)
@@ -240,6 +243,8 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("mock data sources are not allowed outside local/test")
         if self.environment in (Environment.STAGING, Environment.PRODUCTION):
+            if not self.auth.mfa_required:
+                raise ValueError("a second sign-in factor is required outside local/test")
             if not self.auth.enabled:
                 raise ValueError("authentication cannot be disabled outside local/test")
             if self.auth.cookie_secure is False:

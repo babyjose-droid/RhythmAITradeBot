@@ -98,6 +98,10 @@ Broker API key + Secret Key; daily access token (JWT, 24 h); Anthropic API key; 
   The system prompt forbids following embedded instructions, and the gate limits any outcome to confirm-or-downgrade.
 - **Import contracts** enforce that research has no path to the broker, order, execution, paper or risk modules, and that the decision core never imports research.
 
+### Password-only sign-in (temporary)
+
+`RHYTHM_AUTH__MFA_REQUIRED=false` accepts the password alone at sign-in, re-authentication and password change. Settings refuse it in staging/production; readiness SEC-01 reports NOT_MET while it is off. On the AWS test server the dashboard is reachable only through the SSH tunnel, so the SSH key remains a second barrier. Planned replacement: OTP by SMS or email.
+
 ### Read-only Sharekhan link
 
 - The API Key and Secure Key live only in `.env` on the owner's machine (settings refuse placeholders, a Secure Key that is not 32 bytes, and `broker_adapter=sharekhan` with sign-in off). They are `SecretStr` and never logged or returned.

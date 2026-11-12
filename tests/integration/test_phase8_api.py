@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from rhythm.api.app import create_app
+from rhythm.api.routes import auth as auth_routes
 from rhythm.auth import totp
 from rhythm.broker.mock import MockBrokerAdapter
 from rhythm.cli import main
@@ -98,6 +99,7 @@ class Env8:
 
 @pytest.fixture
 def env8(db_url: str, migrated: Engine) -> Iterator[Env8]:
+    auth_routes._limiter._hits.clear()  # process-wide sign-in limiter
     e = Env8(db_url, migrated)
     with e.client():
         yield e
@@ -106,7 +108,12 @@ def env8(db_url: str, migrated: Engine) -> Iterator[Env8]:
 def test_login_session_csrf_and_logout(env8: Env8) -> None:
     anon = env8.client()
     st = anon.get("/v1/auth/status").json()
-    assert st == {"enabled": True, "has_users": False, "setup_hint": st["setup_hint"]}
+    assert st == {
+        "enabled": True,
+        "mfa_required": True,
+        "has_users": False,
+        "setup_hint": st["setup_hint"],
+    }
     assert "user-create" in st["setup_hint"]
     assert anon.get("/health/live").status_code == 200  # public
     assert anon.get("/v1/watchlists").status_code == 401
@@ -121,7 +128,7 @@ def test_login_session_csrf_and_logout(env8: Env8) -> None:
     assert nouser.status_code == 401 and nouser.json()["detail"] == "invalid credentials"
     c = env8.login("owner")
     r = c.post("/v1/auth/login", json={"username": "owner", "password": PW["owner"], "code": "1"})
-    assert r.status_code == 422
+    assert r.status_code == 401  # a malformed code is just a wrong code
     me = c.get("/v1/auth/me").json()
     assert me["username"] == "owner" and me["role"] == "owner"
     sc = c.cookies.get("rhythm_session")
@@ -135,7 +142,10 @@ def test_login_session_csrf_and_logout(env8: Env8) -> None:
     ev = c.get("/v1/audit/events?event_type=watchlist.*").json()
     assert ev and ev[0]["actor_id"] == "owner"  # actions are attributed to the signed-in user
     fails = c.get("/v1/audit/events?event_type=auth.login_failed").json()
-    assert len(fails) == 2 and {f["actor_id"] for f in fails} == {"owner", "ghost"}
+    assert len(fails) == 3 and {f["actor_id"] for f in fails} == {
+        "owner",
+        "ghost",
+    }  # bad code, ghost, malformed code
     assert c.post("/v1/auth/logout").json() == {"logged_out": True}
     again = env8.client()
     again.cookies.set("rhythm_session", sc)
@@ -397,3 +407,29 @@ def test_cli_user_create_prints_secret_once(
         assert main(["user-create", "--username", "second", "--role", "viewer"]) == 2
     finally:
         get_settings.cache_clear()
+
+
+def test_password_only_mode_local(db_url: str, migrated: Engine) -> None:
+    """mfa_required=false: password alone signs in (local only); readiness SEC-01 stays open."""
+    auth_routes._limiter._hits.clear()
+    e = Env8(db_url, migrated)
+    st = e.state
+    st.settings = st.settings.model_copy(
+        update={"auth": st.settings.auth.model_copy(update={"mfa_required": False})}
+    )
+    st.auth.settings = st.settings.auth
+    with e.client():
+        e.add_user("owner", "owner")
+        c = e.client()
+        assert c.get("/v1/auth/status").json()["mfa_required"] is False
+        bad = c.post("/v1/auth/login", json={"username": "owner", "password": "wrong-password-x"})
+        assert bad.status_code == 401
+        r = c.post("/v1/auth/login", json={"username": "owner", "password": PW["owner"]})
+        assert r.status_code == 200, r.text
+        c.headers["X-CSRF-Token"] = r.json()["csrf_token"]
+        assert c.get("/v1/auth/me").json()["mfa_required"] is False
+        e.tick(6 * 60)
+        assert c.post("/v1/auth/reauth", json={"password": PW["owner"]}).status_code == 200
+        gates = {g["id"]: g for g in c.get("/v1/system/live-readiness").json()["gates"]}
+        assert gates["SEC-01"]["status"] == "NOT_MET"
+        assert "authenticator required=False" in gates["SEC-01"]["evidence"]

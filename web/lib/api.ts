@@ -417,11 +417,13 @@ export interface Me {
   username: string;
   role: "owner" | "approver" | "viewer";
   auth_enabled: boolean;
+  mfa_required?: boolean;
   recently_reauthenticated: boolean;
 }
 
 export interface AuthStatus {
   enabled: boolean;
+  mfa_required?: boolean;
   has_users: boolean;
   setup_hint?: string | null;
 }
